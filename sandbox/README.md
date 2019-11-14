@@ -11,7 +11,7 @@ cd /mnt/c/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux
 Invoke-WebRequest -Uri https://aka.ms/wsl-ubuntu-1804 -OutFile Ubuntu.zip -UseBasicParsing
 # Rename-Item ./Ubuntu.appx ./Ubuntu.zip
-Expand-Archive ./Ubuntu.zip ~/wsl/Uuntu-1804-wsl
+Expand-Archive ./Ubuntu.zip ~/wsl/Ubuntu-1804-wsl
 ~/wsl/Ubuntu-1804-wsl/Ubuntu1804.exe
 # add ~/wsl/Ubuntu-1804-wsl to PATH
 wslconfig /list
@@ -35,7 +35,7 @@ sudo jupyter labextension install jupyterlab-dash
 sudo jupyter labextension install jupyter_server_proxy
 sudo jupyter serverextension enable --py jupyterlab --sys-prefix
 sudo jupyter serverextension enable --py jupyter_server_proxy --sys-prefix
-sudo pip install cufflinks dash dash-renderer dash-html-components dash-core-components plotly chart-studio
+sudo pip install cufflinks dash dash-renderer dash-html-components dash-core-components plotly chart-studio dash-daq dash-cytoscape gunicorn dash-bootstrap-components plotly-express
 sudo pip install joblib deap update_checker tqdm stopit dask[delayed] dask-ml scikit-mdr skrebate tpot
 sudo pip install blaze sqlalchemy
 sudo pip install graphviz featuretools
