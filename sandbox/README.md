@@ -2,7 +2,13 @@
 
 ```cmd (with admin rights)
 wsl
+export PYTHONIOENCODING=UTF-8
 cd /mnt/c/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
+```
+
+```
+import platform;
+print(platform.architecture());
 ```
 
 # Environment setup
@@ -22,6 +28,7 @@ sudo apt-get update && apt-get upgrade
 sudo apt install build-essential wget -y
 sudo apt-get install python3-dev python-pip python-dev python3 python python3-pip nodejs npm graphviz
 sudo apt-get install libblas3 liblapack3 liblapack-dev libblas-dev gfortran
+sudo apt-get install libatlas-base-dev python-dev gfortran pkg-config libfreetype6-dev
 sudo pip install --upgrade pip
 sudo pip install --upgrade setuptools
 sudo pip install cython
@@ -31,13 +38,27 @@ sudo pip install xgboost
 sudo pip install tensorflow
 sudo pip install findspark  fastparquet brotli pyarrow thrift
 sudo pip install jupyter jupyterlab importlib seaborn matplotlib jupyter_server_proxy jupyterlab-dash
+sudo pip install qgrid
+sudo pip install quandl
+sudo pip install yfinance
+sudo pip install investpy
+sudo pip install requests_cache
+sudo pip install mpl_finance
+sudo pip install -U --user PyYAML
 sudo jupyter labextension install jupyterlab-dash
 sudo jupyter labextension install jupyter_server_proxy
+sudo jupyter labextension install @jupyter-widgets/jupyterlab-manager
 sudo jupyter serverextension enable --py jupyterlab --sys-prefix
 sudo jupyter serverextension enable --py jupyter_server_proxy --sys-prefix
+sudo jupyter labextension install qgrid
 sudo pip install cufflinks dash dash-renderer dash-html-components dash-core-components plotly chart-studio dash-daq dash-cytoscape gunicorn dash-bootstrap-components plotly-express
 sudo pip install joblib deap update_checker tqdm stopit dask[delayed] dask-ml scikit-mdr skrebate tpot
 sudo pip install blaze sqlalchemy
+sudo pip install alphalens pyfolio
+# deprecated
+# sudo pip install empyrical
+# requires python 3.5
+# sudo pip install zipline
 sudo pip install graphviz featuretools
 sudo pip install cvxpy pykalman cvxopt stats copulalib statistics
 sudo pip install nltk
@@ -50,4 +71,9 @@ sudo make install
 sudo pip install TA-Lib
 sudo jupyter labextension install @jupyter-widgets/jupyterlab-manager
 cd /mnt/c/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
+
 ```
+
+
+# fix for yahoo finance
+pd.core.common.is_list_like = pd.api.types.is_list_like
