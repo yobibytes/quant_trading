@@ -54,7 +54,7 @@ class Ticker(TickerBase):
             proxy = {"https": proxy}
 
         r = _requests.get(url=url, proxies=proxy).json()
-        if r['optionChain']['result']:
+        if r['optionChain']['result'] and r['optionChain']['result'][0] and r['optionChain']['result'][0]['options']:
             for exp in r['optionChain']['result'][0]['expirationDates']:
                 self._expirations[_datetime.datetime.fromtimestamp(
                     exp).strftime('%Y-%m-%d')] = exp
@@ -98,10 +98,16 @@ class Ticker(TickerBase):
             date = self._expirations[date]
             options = self._download_options(date, proxy=proxy)
 
-        return _namedtuple('Options', ['calls', 'puts'])(**{
-            "calls": self._options2df(options['calls'], tz=tz),
-            "puts": self._options2df(options['puts'], tz=tz)
-        })
+        if 'calls' in options and 'puts' in options:
+            return _namedtuple('Options', ['calls', 'puts'])(**{
+                "calls": self._options2df(options['calls'], tz=tz),
+                "puts": self._options2df(options['puts'], tz=tz)
+            })
+        else:
+            return _namedtuple('Options', ['calls', 'puts'])(**{
+                "calls": None,
+                "puts": None
+            })
 
     # ------------------------
 

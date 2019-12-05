@@ -257,90 +257,108 @@ class TickerBase():
 
         # get info and sustainability
         url = '%s/%s' % (self._scrape_url, self.ticker)
-        data = utils.get_json(url, proxy)
-
-        # sustainability
-        d = {}
-        if isinstance(data.get('esgScores'), dict):
-            for item in data['esgScores']:
-                if not isinstance(data['esgScores'][item], dict):
-                    d[item] = data['esgScores'][item]
-
-            s = _pd.DataFrame(index=[0], data=d)[-1:].T
-            s.columns = ['Value']
-            s.index.name = '%.f-%.f' % (
-                s[s.index == 'ratingYear']['Value'].values[0],
-                s[s.index == 'ratingMonth']['Value'].values[0])
-
-            self._sustainability = s[~s.index.isin(
-                ['maxAge', 'ratingYear', 'ratingMonth'])]
-
-        # info (be nice to python 2)
-        self._info = {}
-        items = ['summaryProfile', 'summaryDetail', 'quoteType',
-                 'defaultKeyStatistics', 'assetProfile']
-        for item in items:
-            if isinstance(data.get(item), dict):
-                self._info.update(data[item])
-
-        # events
         try:
-            cal = _pd.DataFrame(
-                data['calendarEvents']['earnings'])
-            cal['earningsDate'] = _pd.to_datetime(
-                cal['earningsDate'], unit='s')
-            self._calendar = cal.T
-            self._calendar.index = utils.camel2title(self._calendar.index)
-            self._calendar.columns = ['Value']
-        except Exception:
-            pass
+            data = utils.get_json(url, proxy)
 
-        # analyst recommendations
-        try:
-            rec = _pd.DataFrame(
-                data['upgradeDowngradeHistory']['history'])
-            rec['earningsDate'] = _pd.to_datetime(
-                rec['epochGradeDate'], unit='s')
-            rec.set_index('earningsDate', inplace=True)
-            rec.index.name = 'Date'
-            rec.columns = utils.camel2title(rec.columns)
-            self._recommendations = rec[[
-                'Firm', 'To Grade', 'From Grade', 'Action']].sort_index()
-        except Exception:
-            pass
+            # sustainability
+            d = {}
+            if isinstance(data.get('esgScores'), dict):
+                try:
+                    for item in data['esgScores']:
+                        if not isinstance(data['esgScores'][item], dict):
+                            d[item] = data['esgScores'][item]
+                    # print(d)
+                    for k, v in d.items():
+                        if type(v)==list:
+                            d[k] = ','.join(v)
+                    s = _pd.DataFrame(index=[0], data=d)[-1:].T
+                    s.columns = ['Value']
+                    s.index.name = '%.f-%.f' % (
+                        s[s.index == 'ratingYear']['Value'].values[0],
+                        s[s.index == 'ratingMonth']['Value'].values[0])
 
-        # get fundamentals
-        data = utils.get_json(url+'/financials', proxy)
+                    self._sustainability = s[~s.index.isin(
+                        ['maxAge', 'ratingYear', 'ratingMonth'])]
+                except Exception:
+                    pass
 
-        # generic patterns
-        for key in (
-            (self._cashflow, 'cashflowStatement', 'cashflowStatements'),
-            (self._balancesheet, 'balanceSheet', 'balanceSheetStatements'),
-            (self._financials, 'incomeStatement', 'incomeStatementHistory')
-        ):
 
-            item = key[1] + 'History'
-            if isinstance(data.get(item), dict):
-                key[0]['yearly'] = cleanup(data[item][key[2]])
+            # info (be nice to python 2)
+            self._info = {}
+            items = ['summaryProfile', 'summaryDetail', 'quoteType',
+                     'defaultKeyStatistics', 'assetProfile']
+            for item in items:
+                if isinstance(data.get(item), dict):
+                    self._info.update(data[item])
 
-            item = key[1]+'HistoryQuarterly'
-            if isinstance(data.get(item), dict):
-                key[0]['quarterly'] = cleanup(data[item][key[2]])
+            # events
+            try:
+                cal = _pd.DataFrame(
+                    data['calendarEvents']['earnings'])
+                cal['earningsDate'] = _pd.to_datetime(
+                    cal['earningsDate'], unit='s')
+                self._calendar = cal.T
+                self._calendar.index = utils.camel2title(self._calendar.index)
+                self._calendar.columns = ['Value']
+            except Exception:
+                pass
 
-        # earnings
-        if isinstance(data.get('earnings'), dict):
-            earnings = data['earnings']['financialsChart']
-            df = _pd.DataFrame(earnings['yearly']).set_index('date')
-            df.columns = utils.camel2title(df.columns)
-            df.index.name = 'Year'
-            self._earnings['yearly'] = df
+            # analyst recommendations
+            try:
+                rec = _pd.DataFrame(
+                    data['upgradeDowngradeHistory']['history'])
+                rec['earningsDate'] = _pd.to_datetime(
+                    rec['epochGradeDate'], unit='s')
+                rec.set_index('earningsDate', inplace=True)
+                rec.index.name = 'Date'
+                rec.columns = utils.camel2title(rec.columns)
+                self._recommendations = rec[[
+                    'Firm', 'To Grade', 'From Grade', 'Action']].sort_index()
+            except Exception:
+                pass
 
-            df = _pd.DataFrame(earnings['quarterly']).set_index('date')
-            df.columns = utils.camel2title(df.columns)
-            df.index.name = 'Quarter'
-            self._earnings['quarterly'] = df
+            # get fundamentals
+            data = utils.get_json(url+'/financials', proxy)
 
-        self._fundamentals = True
+            # generic patterns
+            for key in (
+                (self._cashflow, 'cashflowStatement', 'cashflowStatements'),
+                (self._balancesheet, 'balanceSheet', 'balanceSheetStatements'),
+                (self._financials, 'incomeStatement', 'incomeStatementHistory')
+            ):
+                item = key[1] + 'History'
+                if isinstance(data.get(item), dict):
+                    if 'err' not in data[item]:
+                        key[0]['yearly'] = cleanup(data[item][key[2]])
+                    else:
+                        print(f"yf-{item}> internal error: {data[item]['err']['statusText']}")
+
+                item = key[1]+'HistoryQuarterly'
+                if isinstance(data.get(item), dict):
+                    if 'err' not in data[item]:
+                        key[0]['quarterly'] = cleanup(data[item][key[2]])
+                    else:
+                        print(f"yf-{item}> internal error: {data[item]['err']['statusText']}")
+
+            # earnings
+            if isinstance(data.get('earnings'), dict):
+                if 'err' not in data['earnings']:
+                    earnings = data['earnings']['financialsChart']
+                    df = _pd.DataFrame(earnings['yearly']).set_index('date')
+                    df.columns = utils.camel2title(df.columns)
+                    df.index.name = 'Year'
+                    self._earnings['yearly'] = df
+
+                    df = _pd.DataFrame(earnings['quarterly']).set_index('date')
+                    df.columns = utils.camel2title(df.columns)
+                    df.index.name = 'Quarter'
+                    self._earnings['quarterly'] = df
+                else:
+                    print(f"yf-earnings> internal error: {data['earnings']['err']['statusText']}")
+            self._fundamentals = True
+        except Exception as e:
+            print('ERROR: yf> failed to download ticker data')
+            raise e
 
     def get_recommendations(self, proxy=None, as_dict=False, *args, **kwargs):
         self._get_fundamentals(proxy)
@@ -404,17 +422,26 @@ class TickerBase():
     def get_dividends(self, proxy=None):
         if self._history is None:
             self.history(period="max", proxy=proxy)
-        dividends = self._history["Dividends"]
-        return dividends[dividends != 0]
+        if 'Dividends' in self._history.columns:
+            dividends = self._history["Dividends"]
+            return dividends[dividends != 0]
+        else:
+            return None
 
     def get_splits(self, proxy=None):
         if self._history is None:
             self.history(period="max", proxy=proxy)
-        splits = self._history["Stock Splits"]
-        return splits[splits != 0]
+        if 'Stock Splits' in self._history.columns:
+            splits = self._history["Stock Splits"]
+            return splits[splits != 0]
+        else:
+            return None
 
     def get_actions(self, proxy=None):
         if self._history is None:
             self.history(period="max", proxy=proxy)
-        actions = self._history[["Dividends", "Stock Splits"]]
-        return actions[actions != 0].dropna(how='all').fillna(0)
+        if 'Dividends' in self._history.columns and 'Stock Splits' in self._history.columns:
+            actions = self._history[["Dividends", "Stock Splits"]]
+            return actions[actions != 0].dropna(how='all').fillna(0)
+        else:
+            return None
