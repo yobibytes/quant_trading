@@ -6,19 +6,37 @@ import re
 import shutil
 import sys
 import munch
-
+import pickle
 import numpy as np
 import pandas as pd
 from numba import jit
-
-import yfinance as yf
-yf.pdr_override()
+import urllib.parse
 
 SECONDS_IN_MS = 1000
 MINUTES_IN_MS = 60 * SECONDS_IN_MS
 HOURS_IN_MS = 60 * MINUTES_IN_MS
 DAYS_IN_MS = 24 * HOURS_IN_MS
 TIMESTAMP_MS_CHECK = 10 ** 10
+
+def get_stocks(selected_index='^GDAXI'):
+    enc_index = urllib.parse.quote(selected_index)
+    print(f"shared> parsing stocks from web '{selected_index}' ...")
+    index_stocks = pd.read_html(f'https://finance.yahoo.com/quote/{enc_index}/components?p={enc_index}')[0].Symbol.tolist()
+    return sorted([t for t in index_stocks])
+
+def get_benchmarks():
+    print(f"shared> parsing benchmarks from web ...")
+    indices = pd.read_html('https://finance.yahoo.com/world-indices')[0].Symbol.tolist()
+    currencies = pd.read_html('https://finance.yahoo.com/currencies')[0].Symbol.tolist()
+    commodities = pd.read_html('https://finance.yahoo.com/commodities')[0].Symbol.tolist()
+    return sorted([i for i in (indices + currencies + commodities)])
+    
+def index_to_datetime(df, fmt='%Y'):
+    if fmt=='%Q':
+        df.index = df.index.astype(str).to_series().apply(lambda s: parse_datetime(s[-4:] + '-' + {'1Q': '03-31', '2Q': '06-30', '3Q': '09-30', '4Q': '12-31'}.get(s[:2])))
+    else:
+        df.index = pd.to_datetime(df.index.astype(str), format=fmt)
+    return df
 
 def parse_datetime(dt_str):
     l = len(dt_str)
@@ -29,8 +47,12 @@ def parse_datetime(dt_str):
             return datetime.datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%S')
     elif l > 19:
         return datetime.datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%S.%f')
-    else:
+    elif l > 9:
         return datetime.datetime.strptime(dt_str, '%Y-%m-%d')
+    elif l > 5:
+        return datetime.datetime.strptime(dt_str, '%Y-%m')
+    else:
+        return datetime.datetime.strptime(dt_str, '%Y')
 
 def get_todays_build_version(version='1.0.0'):
     today_dt = datetime.datetime.combine(datetime.datetime.now(), datetime.time.min)
@@ -53,7 +75,7 @@ def format_build_datetime(dt=datetime.datetime.now()):
 
 def format_build_date(dt=datetime.datetime.now()):
     if type(str) == str:
-        return str.replace(':', '')
+        return str.replace(':', '').replace('-', '')
     else:
         return format_datetime(dt, '%Y%m%d')
 
@@ -70,6 +92,15 @@ def chunks_idx(l, n=200):
     for i in range(0, len(l), n):
         yield i, i + n
 
+def to_category_name(s):
+    return re.sub('[^a-z0-9_]', '', s.strip().lower().replace(' ', '_'))
+
+def to_category_names(df):
+    if df is not None:
+        df.rename(to_category_name, axis='columns', inplace=True)
+        return df
+    else:
+        return df
 
 def is_true(str):
     if type(str) == bool:
@@ -94,7 +125,7 @@ def get_timestamp_sec(ts):
         return ts
 
     
-def get_config(overwrite=False):
+def get_config(selected_index='^GDAXI', overwrite=False):
     from dotenv import load_dotenv, find_dotenv
     load_dotenv(find_dotenv(), verbose=True)
     
@@ -119,7 +150,8 @@ def get_config(overwrite=False):
     
     
     # feature configurations
-    window_trading_days = [int(s.strip()) for s in os.environ['WINDOW_TRADING_DAYS'].split(',')]
+    window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].split(',')]
+    lag_trading_days = [int(s.strip()) for s in os.environ['TRAIN_LAG_TRADING_DAYS'].split(',')]
     
     # parse start and end dates
     end_dt_str = format_date() if len(os.environ['END_DT']) == 0 else os.environ['END_DT']
@@ -137,11 +169,19 @@ def get_config(overwrite=False):
     conservative_download_days = math.ceil(7 + (max_window_trading_days / 5. * 7.))
     download_start_dt = start_dt - datetime.timedelta(days=conservative_download_days)
     download_start_dt_str = format_date(download_start_dt)
+    cache_enabled = is_true(os.environ['CACHE_ENABLED'])
+
     print(f"shared> download period: from '{download_start_dt_str}' to '{end_dt_str}'")
     
     # read selected features
-    benchmarks = sorted([s.upper().strip() for s in os.environ['BENCHMARKS'].split(',')])
-    stocks = sorted([s.upper().strip() for s in os.environ['STOCKS'].split(',')])
+    if len(os.environ['BENCHMARKS']) > 0:
+        benchmarks = sorted([s.upper().strip() for s in os.environ['BENCHMARKS'].split(',')])
+    else:
+        benchmarks = get_benchmarks()
+    if len(os.environ['STOCKS']) > 0:
+        stocks = sorted([s.upper().strip() for s in os.environ['STOCKS'].split(',')])
+    else:
+        stocks = get_stocks(selected_index)
     print(f"shared> benchmarks: '{benchmarks}'")
     print(f"shared> stocks: '{stocks}'")
     
@@ -154,6 +194,7 @@ def get_config(overwrite=False):
     cfg = munch.munchify({
         'config_file_path': str(f_cfg.resolve()),
         'cache_dir': cache_dir,
+        'cache_enabled': cache_enabled,
         'current_dir': current_dir,
         'start_dt_str': start_dt_str,
         'download_start_dt_str': download_start_dt_str,
@@ -163,7 +204,8 @@ def get_config(overwrite=False):
         'benchmarks': benchmarks,
         'stocks': stocks,
         'train_horizon_config': train_horizon_cfg,
-        'window_trading_days': window_trading_days
+        'train_window_trading_days': window_trading_days,
+        'train_lag_trading_days': lag_trading_days
     })
     print(f'shared> read from .env: {cfg}')
     return cfg
@@ -175,68 +217,9 @@ def save_config(cfg):
         fd.write(cfg_json)
     print(f"shared> saved config to '{f_cfg.resolve()}'")
 
-def download_stocks(cfg, interval='1d'):
-    return _download_tickers(cfg, 'stocks', interval)
+class ProviderException(Exception):
+    pass
 
-def download_benchmarks(cfg, interval='1d'):
-    return _download_tickers(cfg, 'benchmarks', interval)
-
-def _download_tickers(cfg, key, interval):
-    ticker_cfg = munch.munchify({
-        'stocks': {
-            'name': 'stocks',
-            'tickers':  ' '.join(cfg.stocks)
-        },
-        'benchmarks': {
-            'name': 'benchmarks',
-            'tickers':  ' '.join(cfg.benchmarks)
-        }
-    }.get(key, 'stocks'))
-    f_cache = pathlib.Path(f'{cfg.cache_dir}/{ticker_cfg.name}_{format_build_date(cfg.download_start_dt_str)}_{format_build_date(cfg.end_dt_str)}_{interval}.pkl')
-    if f_cache.is_file():
-        df = pd.read_pickle(f_cache)
-    else:
-        df = yf.download(ticker_cfg.tickers, start=cfg.download_start_dt_str, end=cfg.end_dt_str, interval=interval, prepost=True, threads=True, proxy=None)
-        if df.isnull().values.sum() > 0:
-            raise Exception(f"Missing values found! (#missing: {df.isnull().values.sum()})")
-        df.to_pickle(f_cache)
-    ticker_cfg.features = sorted(set([k for k, v in df.keys().tolist()]))    
-    return ticker_cfg, df
-
-def filter_dates(s, dates, forward_trading_days=0):
-    if dates is not None:
-        if forward_trading_days>0:
-            filter_start_dt = s[s.index <= dates.train_start_dt][-(forward_trading_days+1):-(forward_trading_days)].index[0]
-        else:
-            filter_start_dt = dates.train_start_dt
-        return s[(s.index >= filter_start_dt) & (s.index <= dates.train_end_dt)]
-    else:
-        return s
-
-def tf_none(s, dates):
-    s = filter_dates(s, dates)
-    return s
-
-def tf_rel(s, dates):
-    s = filter_dates(s, dates)
-    return s / s[0]
-
-def tf_logdiff(s, dates):
-    s = filter_dates(s, dates)
-    return np.log(s) - np.log(s.shift(1))
-
-def _tf_ma(s, dates, window_trading_days):
-    s = filter_dates(s, dates, window_trading_days)
-    s = s.rolling(window=window_trading_days).mean()
-    s = filter_dates(s, dates)
-    return s
-
-def tf_ma(window_trading_days):
-    return lambda s, dates: _tf_ma(s, dates, window_trading_days)
-
-def get_ticker_feature(df, feature, ticker, dates=None, ticker_func=tf_none):
-    s = df[feature, ticker]
-    return ticker_func(s, dates)
 
 def filter_dates_generator(cfg, horizon_cfg):
     train_days = horizon_cfg[0]

@@ -2,7 +2,6 @@
 
 ```cmd (with admin rights)
 wsl
-export PYTHONIOENCODING=UTF-8
 cd /mnt/c/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
 ```
 
@@ -40,6 +39,8 @@ sudo pip install findspark  fastparquet brotli pyarrow thrift
 sudo pip install jupyter jupyterlab importlib seaborn matplotlib jupyter_server_proxy jupyterlab-dash
 sudo pip install qgrid
 sudo pip install quandl
+sudo pip install html5lib
+sudo pip install bs4
 sudo pip install yfinance
 sudo pip install investpy
 sudo pip install requests_cache
