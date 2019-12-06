@@ -329,14 +329,16 @@ class TickerBase():
                 item = key[1] + 'History'
                 if isinstance(data.get(item), dict):
                     if 'err' not in data[item]:
-                        key[0]['yearly'] = cleanup(data[item][key[2]])
+                        if key[2] in data[item]:
+                            key[0]['yearly'] = cleanup(data[item][key[2]])
                     else:
                         print(f"yf-{item}> internal error: {data[item]['err']['statusText']}")
 
                 item = key[1]+'HistoryQuarterly'
                 if isinstance(data.get(item), dict):
                     if 'err' not in data[item]:
-                        key[0]['quarterly'] = cleanup(data[item][key[2]])
+                        if key[2] in data[item]:
+                            key[0]['quarterly'] = cleanup(data[item][key[2]])
                     else:
                         print(f"yf-{item}> internal error: {data[item]['err']['statusText']}")
 

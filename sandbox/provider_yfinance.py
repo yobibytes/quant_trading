@@ -35,7 +35,8 @@ def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10):
     - actions: Download stock dividends and stock splits events? (Default is True)    
     '''
     retried = 0
-    period = 'max'
+    # period = 'max'
+    period = '10y'
     print(f"tickers-{ticker_cfg.name}> downloading histories ...")
     while True:
         try:
@@ -48,14 +49,19 @@ def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10):
             for t in ticker_cfg.tickers:                
                 result[t] = {}
                 for f in features:
-                    result[t][to_category_name(f)] = to_category_names(df[f, t].to_frame(name=f))
+                    if (f,t) in df.columns:
+                        result[t][to_category_name(f)] = to_category_names(df[f, t].to_frame(name=f))
             return result
         except Exception as e:
             retried += 1
             if retried > retries:
                 raise ProviderException(e)
             else:
-                period='10y'
+                period = {
+                    'max': '10y',
+                    '10y': '5y',
+                    '5y': '2y'
+                }.get(period, '2y')
                 print(f"WARN: ticker-{ticker_cfg.name}> retrying downloading histories ... (#{retried} of {retries})")
                 pass
 
@@ -94,7 +100,11 @@ def _data_ticker(cfg, ticker_cfg, t, interval='1d', retries=10):
             if retried > retries:
                 raise ProviderException(e)
             else:
-                period='10y'
+                period = {
+                    'max': '10y',
+                    '10y': '5y',
+                    '5y': '2y'
+                }.get(period, '2y')
                 print(f"WARN: ticker-{t}> retrying loading ticker data ... (#{retried} of {retries})")
                 pass
 
@@ -120,9 +130,9 @@ def _load_tickers(cfg, key, interval='1d'):
         with f_cache.open('rb') as fp:
             data = munch.munchify(pickle.load(fp))
     else:
-        data_dict = {            
-            'tickers': _data_tickers(cfg, ticker_cfg, interval),
+        data_dict = {
             'downloads': _download_tickers(cfg, ticker_cfg, interval),
+            'tickers': _data_tickers(cfg, ticker_cfg, interval),
         }
         with f_cache.open('wb') as fp:
             pickle.dump(data_dict, fp)

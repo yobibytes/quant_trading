@@ -74,8 +74,8 @@ def format_build_datetime(dt=datetime.datetime.now()):
         return format_datetime(dt, '%Y%m%d%H%M%S')
 
 def format_build_date(dt=datetime.datetime.now()):
-    if type(str) == str:
-        return str.replace(':', '').replace('-', '')
+    if type(dt) == str:
+        return dt.replace(':', '').replace('-', '')
     else:
         return format_datetime(dt, '%Y%m%d')
 
