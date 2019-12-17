@@ -118,14 +118,14 @@ def _load_tickers(cfg, key, interval='1d'):
     ticker_cfg = munch.munchify({
         'stocks': {
             'name': 'stocks',
-            'tickers':  cfg.stocks
+            'tickers':  cfg.datasets.raw.stocks
         },
         'benchmarks': {
             'name': 'benchmarks',
-            'tickers':  cfg.benchmarks
+            'tickers':  cfg.datasets.raw.benchmarks
         }
     }.get(key, 'stocks'))
-    f_cache = pathlib.Path(f'{cfg.cache_dir}/{ticker_cfg.name}_{format_build_date(cfg.start_dt_str)}_{format_build_date(cfg.end_dt_str)}_{interval}.pkl')
+    f_cache = pathlib.Path(f'{cfg.base.cache_dir}/{ticker_cfg.name}_{format_build_date(cfg.prepare.download_start_dt)}_{format_build_date(cfg.prepare.download_end_dt)}_{interval}.pkl')
     if f_cache.is_file():
         with f_cache.open('rb') as fp:
             data = munch.munchify(pickle.load(fp))
@@ -184,3 +184,18 @@ def get_ticker_feature(data, ticker, feature, dates=None, ticker_func=tf_none):
         pass
     s = data[service][ticker][feature_type][feature].dropna()
     return ticker_func(s, dates)
+
+
+def get_stocks(selected_index='^GDAXI'):
+    enc_index = urllib.parse.quote(selected_index)
+    print(f"shared> parsing stocks from web '{selected_index}' ...")
+    index_stocks = pd.read_html(f'https://finance.yahoo.com/quote/{enc_index}/components?p={enc_index}')[0].Symbol.tolist()
+    return sorted([t for t in index_stocks])
+
+def get_benchmarks():
+    print(f"shared> parsing benchmarks from web ...")
+    indices = pd.read_html('https://finance.yahoo.com/world-indices')[0].Symbol.tolist()
+    currencies = pd.read_html('https://finance.yahoo.com/currencies')[0].Symbol.tolist()
+    commodities = pd.read_html('https://finance.yahoo.com/commodities')[0].Symbol.tolist()
+    return sorted([i for i in (indices + currencies + commodities)])
+    
