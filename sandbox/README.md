@@ -31,7 +31,7 @@ sudo apt-get install libatlas-base-dev python-dev gfortran pkg-config libfreetyp
 sudo pip install --upgrade pip
 sudo pip install --upgrade setuptools
 sudo pip install cython
-sudo pip install python-dotenv pandas numpy numba scipy scikit-learn cachetools  psutil pyyaml requests python-dateutil statsmodels urllib3 beautifulsoup4 pandas-datareader xlrd python-dotenv munch
+sudo pip install python-dotenv pandas numpy numba scipy scikit-learn cachetools psutil pyyaml requests python-dateutil statsmodels urllib3 beautifulsoup4 pandas-datareader xlrd python-dotenv munch openpyxl==3.0.1
 sudo pip install ray
 sudo pip install xgboost
 sudo pip install tensorflow
@@ -56,6 +56,7 @@ sudo pip install cufflinks dash dash-renderer dash-html-components dash-core-com
 sudo pip install joblib deap update_checker tqdm stopit dask[delayed] dask-ml scikit-mdr skrebate tpot
 sudo pip install blaze sqlalchemy
 sudo pip install alphalens pyfolio
+sudo pip install holidays
 # deprecated
 # sudo pip install empyrical
 # requires python 3.5

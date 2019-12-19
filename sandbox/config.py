@@ -80,10 +80,15 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     if not p.is_dir():
         p.mkdir(parents=True, exist_ok=True)
     cache_dir = str(p.resolve())    
+    p = pathlib.Path(os.environ.get('MODEL_DIR', './model/'))
+    if not p.is_dir():
+        p.mkdir(parents=True, exist_ok=True)
+    model_dir = str(p.resolve())    
             
     # feature configurations
-    window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].split(',')]
-    lag_trading_days = [int(s.strip()) for s in os.environ['TRAIN_LAG_TRADING_DAYS'].split(',')]
+    window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
+    lag_trading_days = [int(s.strip()) for s in os.environ['TRAIN_LAG_TRADING_DAYS'].strip().split(',')]
+    max_seq_len = int(os.environ.get('MODEL_MAX_SEQ_LEN', '40'))
     
     # parse start and end dates
     data_end_dt_str = format_date() if len(os.environ['DATA_END_DT']) == 0 else os.environ['DATA_END_DT']
@@ -92,7 +97,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     if data_start_dt_str is not None:
         start_dt = parse_datetime(data_start_dt_str)
     else:
-        weeks = int(os.environ.get('TRAIN_LAST_WEEKS', '12'))        
+        weeks = int(os.environ.get('TRAIN_LAST_WEEKS', '30'))        
         start_dt = end_dt - datetime.timedelta(weeks=weeks)
         data_start_dt_str = format_date(start_dt)
     print(f"config> data period: from '{data_start_dt_str}' to '{data_end_dt_str}'")
@@ -107,25 +112,27 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     
     # read selected features
     if len(os.environ['BENCHMARKS']) > 0:
-        benchmarks = sorted([s.upper().strip() for s in os.environ['BENCHMARKS'].split(',')])
+        benchmarks = sorted([s.upper().strip() for s in os.environ['BENCHMARKS'].strip().split(',')])
     else:
         benchmarks = get_benchmarks()
     if len(os.environ['STOCKS']) > 0:
-        stocks = sorted([s.upper().strip() for s in os.environ['STOCKS'].split(',')])
+        stocks = sorted([s.upper().strip() for s in os.environ['STOCKS'].strip().split(',')])
     else:
         stocks = get_stocks(selected_index)
     print(f"config> benchmarks: '{benchmarks}'")
     print(f"config> stocks: '{stocks}'")
         
     # read time horizons
-    train_start_dt_str = data_start_dt_str if len(os.environ['TRAIN_START_DT']) == 0 else os.environ['TRAIN_START_DT']
-    train_train_days = [int(s.strip()) for s in os.environ['TRAIN_TRAIN_DAYS'].split(',')]
-    train_test_days = [int(s.strip()) for s in os.environ['TRAIN_TEST_DAYS'].split(',')]    
+    train_required_data_days = max(train_train_days) + max(train_test_days) + max_seq_len
+    train_start_dt_str = end_dt - datetime.timedelta(days=train_required_data_days) if len(os.environ['TRAIN_START_DT']) == 0 else os.environ['TRAIN_START_DT']
+    train_train_days = [int(s.strip()) for s in os.environ['TRAIN_TRAIN_DAYS'].strip().split(',')]
+    train_test_days = [int(s.strip()) for s in os.environ['TRAIN_TEST_DAYS'].strip().split(',')]
 
-    assert data_end_dt_str>=download_end_dt_str, 'data end date after download end date!'
-    assert data_start_dt_str<=download_start_dt_str, 'data start date before download start date!'
-    assert train_start_dt_str>=data_start_dt_str, 'train start date before data start date!'
-    assert train_start_dt_str<=data_end_dt_str, 'train start date before data end date!'
+    
+    assert data_end_dt_str<=download_end_dt_str, 'data end date after download end date!'
+    assert data_start_dt_str>=download_start_dt_str, 'data start date before download start date!'
+    assert train_start_dt_str<=data_end_dt_str, 'train start date before data start date!'
+    assert train_start_dt_str>=data_start_dt_str, 'train start date before data end date!'
     assert len(train_train_days)==len(train_test_days), 'train days config size != test days config size!'
     
     # create config obj
@@ -134,15 +141,22 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             'current_dir': current_dir,
             'config_file_path': str(pathlib.Path(cfg_path).resolve()),
             'cache_dir': cache_dir,
-            'cache_enabled': cache_enabled
+            'cache_enabled': cache_enabled,
+            'model_dir': model_dir
         },  
         'datasets': {
             'raw': {
                 'benchmarks': benchmarks,
                 'stocks': stocks
             }
-        }, 
+        },
+        'model': {
+            'max_seq_len': max_seq_len,
+            'model_dir': f'{model_dir}/{format_build_date(download_end_dt_str)}/',
+            'model_base_dir': f'{model_dir}/base/'
+        },
         'prepare': {
+            'cache_dir': f'{cache_dir}/{format_build_date(download_end_dt_str)}/',
             'download_start_dt': download_start_dt_str,
             'download_end_dt': download_end_dt_str,
             'data_start_dt': data_start_dt_str,

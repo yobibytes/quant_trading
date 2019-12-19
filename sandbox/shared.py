@@ -38,10 +38,6 @@ def show(df, max_cols=10):
     return show_grid(df[df.columns[:max_cols]])
 
 
-def to_snake_case(s):
-    return re.sub('[^a-z0-9_]', '', str(s).replace('(1)', '').strip(STRIP_CHARS).lower().replace(' ', '_'))
-
-
 def apply_filters(cfg, df):
     for c, v in cfg.filters.items():
         if c in df.columns:
@@ -152,7 +148,9 @@ def get_todays_build_version(version='1.0.0'):
     return version, build, f'{version}_{build}'
 
 
-def format_datetime(dt=datetime.datetime.now(), fmt=None):
+def format_datetime(dt=None, fmt=None):
+    if dt is None:
+        dt = datetime.datetime.now()
     if fmt is None:
         fmt = '%Y-%m-%d %H:%M:%S'
     if isinstance(dt, str):
@@ -161,19 +159,19 @@ def format_datetime(dt=datetime.datetime.now(), fmt=None):
         return dt.strftime(fmt)
 
 
-def format_build_datetime(dt=datetime.datetime.now()):
+def format_build_datetime(dt=None):
     if type(str) == str:
         return str.replace(':', '')
     else:
         return format_datetime(dt, '%Y%m%d%H%M%S')
 
-def format_build_date(dt=datetime.datetime.now()):
+def format_build_date(dt=None):
     if type(dt) == str:
         return dt.replace(':', '').replace('-', '')
     else:
         return format_datetime(dt, '%Y%m%d')
 
-def format_date(dt):
+def format_date(dt=None):
     return format_datetime(dt, '%Y-%m-%d')
 
 
@@ -186,12 +184,12 @@ def chunks_idx(l, n=200):
     for i in range(0, len(l), n):
         yield i, i + n
 
-def to_category_name(s):
-    return re.sub('[^a-z0-9_]', '', s.strip().lower().replace(' ', '_'))
+def to_snake_case(s):
+    return re.sub('[^a-z0-9_]', '', str(s).strip(STRIP_CHARS).lower().replace(' ', '_'))
 
-def to_category_names(df):
+def to_snake_cases(df):
     if df is not None:
-        df.rename(to_category_name, axis='columns', inplace=True)
+        df.rename(to_snake_case, axis='columns', inplace=True)
         return df
     else:
         return df
@@ -266,3 +264,38 @@ def filter_dates_generator(cfg, cfg_idx, steps=1):
                 'predict_end_dt': predict_end_dt
             }))
         train_start_dt += datetime.timedelta(days=steps)
+        
+def is_dataframe(df):
+    return df is not None and isinstance(df, pd.DataFrame)
+
+def generate_rolling_windows(cfg, df, prefix=''):
+    for d in cfg.train.window_trading_days:
+        name = f'{prefix}rolling_{d}d'
+        df[name] = df[f'{prefix}close'].rolling(window=d).mean()
+    return df
+
+def generate_diff(cfg, df, prefix=''):
+    s1 = df[f'{prefix}close'].shift(-1)
+    df[f'{prefix}diff_prev'] = df[f'{prefix}open'] - s1
+    df[f'{prefix}diff_oc'] = df[f'{prefix}close'] - df[f'{prefix}open']
+    df[f'{prefix}diff_hl'] = df[f'{prefix}high'] - df[f'{prefix}low']
+    return df
+
+def generate_loglag(cfg, df, prefix=''):
+    for d in cfg.train.lag_trading_days:
+        name = f'{prefix}lag_{d}d'
+        s = df[f'{prefix}close']
+        df[name] = np.log(s) - np.log(s.shift(d))
+    return df
+
+def generate_dt(cfg, df, prefix=''):
+    s1 = df.index.copy()
+    s1 = s1.insert(0, None)
+    df[f'{prefix}break_days'] = (df.index - s1[:-1]).days - 1
+    df[f'{prefix}weekday'] = df.index.weekday
+    return df
+
+def save_pickle(pth, obj):
+    f = pathlib.Path(pth)
+    with f.open('wb') as fp:
+        pickle.dump(obj, fp)
