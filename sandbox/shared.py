@@ -268,34 +268,24 @@ def filter_dates_generator(cfg, cfg_idx, steps=1):
 def is_dataframe(df):
     return df is not None and isinstance(df, pd.DataFrame)
 
-def generate_rolling_windows(cfg, df, prefix=''):
-    for d in cfg.train.window_trading_days:
-        name = f'{prefix}rolling_{d}d'
-        df[name] = df[f'{prefix}close'].rolling(window=d).mean()
-    return df
-
-def generate_diff(cfg, df, prefix=''):
-    s1 = df[f'{prefix}close'].shift(-1)
-    df[f'{prefix}diff_prev'] = df[f'{prefix}open'] - s1
-    df[f'{prefix}diff_oc'] = df[f'{prefix}close'] - df[f'{prefix}open']
-    df[f'{prefix}diff_hl'] = df[f'{prefix}high'] - df[f'{prefix}low']
-    return df
-
-def generate_loglag(cfg, df, prefix=''):
-    for d in cfg.train.lag_trading_days:
-        name = f'{prefix}lag_{d}d'
-        s = df[f'{prefix}close']
-        df[name] = np.log(s) - np.log(s.shift(d))
-    return df
-
-def generate_dt(cfg, df, prefix=''):
-    s1 = df.index.copy()
-    s1 = s1.insert(0, None)
-    df[f'{prefix}break_days'] = (df.index - s1[:-1]).days - 1
-    df[f'{prefix}weekday'] = df.index.weekday
-    return df
-
 def save_pickle(pth, obj):
-    f = pathlib.Path(pth)
+    if type(pth) == str:
+        f = pathlib.Path(pth)
+    else:
+        f = pth
+    if type(obj) == dict:
+        obj_dict = obj
+    else:
+        obj_dict = munch.unmunchify(obj)
     with f.open('wb') as fp:
-        pickle.dump(obj, fp)
+        pickle.dump(obj_dict, fp)
+
+def load_pickle(pth):
+    if type(pth) == str:
+        f = pathlib.Path(pth)
+    else:
+        f = pth
+    if f.is_file():
+        with f.open('rb') as fp:
+            return munch.munchify(pickle.load(fp))
+    return None

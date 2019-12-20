@@ -167,7 +167,8 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             'train_days': train_train_days,
             'test_days': train_test_days,
             'window_trading_days': window_trading_days,
-            'lag_trading_days': lag_trading_days            
+            'lag_trading_days': lag_trading_days,
+            'batch_size': 200
         }
     })
     print(f'config> created from .env: {cfg}')

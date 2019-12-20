@@ -157,12 +157,9 @@ def _load_tickers(cfg, key, interval='1d'):
     }.get(key, 'stocks'))
     f_cache = pathlib.Path(f'{cfg.prepare.cache_dir}/{ticker_cfg.name}_{interval}.pkl')
     f_meta_cache = pathlib.Path(f'{cfg.prepare.cache_dir}/{ticker_cfg.name}_{interval}_meta.pkl')
-    if f_cache.is_file() and f_meta_cache.is_file():
-        with f_cache.open('rb') as fp:
-            data = munch.munchify(pickle.load(fp))
-        with f_meta_cache.open('rb') as fp:
-            ticker_cfg = munch.munchify(pickle.load(fp))
-    else:
+    data = load_pickle(f_cache)
+    ticker_cfg = load_pickle(f_meta_cache)
+    if data is None or ticker_cfg is None:
         data = munch.munchify({
             'downloads': _download_tickers(cfg, ticker_cfg, interval),
             'tickers': _data_tickers(cfg, ticker_cfg, interval),
@@ -237,3 +234,66 @@ def get_benchmarks():
     commodities = pd.read_html('https://finance.yahoo.com/commodities')[0].Symbol.tolist()
     return sorted([i for i in (indices + currencies + commodities)])
     
+
+def generate_rolling_windows(cfg, df, prefix=''):
+    for d in cfg.train.window_trading_days:
+        name = f'{prefix}rolling_{d}d'
+        df[name] = df[f'{prefix}close'].rolling(window=d).mean()
+    return df
+
+def generate_diff(cfg, df, prefix=''):
+    s1 = df[f'{prefix}close'].shift(1)
+    df[f'{prefix}diff_prev'] = df[f'{prefix}open'] - s1
+    df[f'{prefix}diff_oc'] = df[f'{prefix}close'] - df[f'{prefix}open']
+    df[f'{prefix}diff_hl'] = df[f'{prefix}high'] - df[f'{prefix}low']
+    return df
+
+def generate_loglag(cfg, df, prefix=''):
+    for d in cfg.train.lag_trading_days:
+        name = f'{prefix}lag_{d}d'
+        s = df[f'{prefix}close']
+        df[name] = np.log(s) - np.log(s.shift(d))
+    return df
+
+def generate_dt(cfg, df, prefix=''):
+    s1 = df.index.copy()
+    s1 = s1.insert(0, None)
+    df[f'{prefix}break_days'] = (df.index - s1[:-1]).days - 1
+    df[f'{prefix}weekday'] = df.index.weekday
+    return df
+
+def prepare_stocks(cfg, data_stocks, overwrite=False):
+    pkl_file = f'{cfg.prepare.cache_dir}/stocks_prep.pkl'
+    prep_stocks = load_pickle(pkl_file)
+    if overwrite or prep_stocks is None:
+        prep_stocks = munch.Munch()
+        for k in data_stocks.tickers.keys():
+            df = data_stocks.tickers[k].history.copy()
+            df = df.loc[df.index >= cfg.prepare.data_start_dt]
+            df = generate_dt(cfg, df)
+            df = generate_diff(cfg, df)
+            df = generate_rolling_windows(cfg, df)
+            df = generate_loglag(cfg, df)
+            df = df.loc[df.index >= cfg.train.start_dt]
+            # df.break_days.astype(int)
+            prep_stocks[k] = df
+        save_pickle(pkl_file, prep_stocks)
+    return prep_stocks
+
+def prepare_benchmarks(cfg, data_benchmarks, overwrite=False):
+    pkl_file = f'{cfg.prepare.cache_dir}/benchmarks_prep.pkl'
+    prep_benchmarks = load_pickle(pkl_file)
+    if overwrite or prep_benchmarks is None:
+        prep_benchmarks = munch.Munch()
+        for k in data_benchmarks.tickers.keys():
+            df = data_benchmarks.tickers[k].history[['open','high','low','close','volume']].copy()
+            df = df.loc[df.index >= cfg.prepare.data_start_dt]
+            prefix = f'{to_snake_case(k)}_'
+            df.rename(columns=dict([(c, f'{prefix}{c}') for c in df.columns]), inplace=True)            
+            df = generate_diff(cfg, df, prefix)
+            df = generate_rolling_windows(cfg, df, prefix)
+            df = generate_loglag(cfg, df, prefix)
+            df = df.loc[df.index >= cfg.train.start_dt]
+            prep_benchmarks[k] = df
+        save_pickle(pkl_file, prep_benchmarks)
+    return prep_benchmarks
