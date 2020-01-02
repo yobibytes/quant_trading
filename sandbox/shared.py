@@ -288,4 +288,5 @@ def load_pickle(pth):
     if f.is_file():
         with f.open('rb') as fp:
             return munch.munchify(pickle.load(fp))
+    print(f"shared> failed to load pickle file: '{pth}'")    
     return None

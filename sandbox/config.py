@@ -89,7 +89,12 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
     lag_trading_days = [int(s.strip()) for s in os.environ['TRAIN_LAG_TRADING_DAYS'].strip().split(',')]
     max_seq_len = int(os.environ.get('MODEL_MAX_SEQ_LEN', '40'))
-    
+    max_manifold = int(os.environ.get('TRAIN_MAX_MANIFOLD', '5'))    
+    samples_before = int(os.environ.get('TRAIN_PREV_YEAR_SAMPLES_BEFORE', '5'))    
+    samples_after = int(os.environ.get('TRAIN_PREV_YEAR_SAMPLES_AFTER', '5'))    
+    label_max_high_weight = float(os.environ.get('TRAIN_LABEL_MAX_HIGH_WEIGHT', '3.'))    
+    label_max_close_weight = float(os.environ.get('TRAIN_LABEL_MAX_CLOSE_WEIGHT', '1.'))    
+
     # parse start and end dates
     data_end_dt_str = format_date() if len(os.environ['DATA_END_DT']) == 0 else os.environ['DATA_END_DT']
     end_dt = parse_datetime(data_end_dt_str)
@@ -123,17 +128,35 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     print(f"config> stocks: '{stocks}'")
         
     # read time horizons
-    train_required_data_days = max(train_train_days) + max(train_test_days) + max_seq_len
-    train_start_dt_str = end_dt - datetime.timedelta(days=train_required_data_days) if len(os.environ['TRAIN_START_DT']) == 0 else os.environ['TRAIN_START_DT']
-    train_train_days = [int(s.strip()) for s in os.environ['TRAIN_TRAIN_DAYS'].strip().split(',')]
-    train_test_days = [int(s.strip()) for s in os.environ['TRAIN_TEST_DAYS'].strip().split(',')]
+    train_lookback_days = [int(s.strip()) for s in os.environ['TRAIN_LOOKBACK_DAYS'].strip().split(',')]
+    train_label_days = [int(s.strip()) for s in os.environ['TRAIN_TEST_DAYS'].strip().split(',')]
+    train_ensemble_weights = [float(s.strip()) for s in os.environ['TRAIN_ENSEMBLE_WEIGHTS'].strip().split(',')]
+    train_required_data_days = max(train_lookback_days) + max(train_label_days) + max_seq_len
+    train_start_dt_str = format_date(end_dt - datetime.timedelta(days=train_required_data_days) if len(os.environ['TRAIN_START_DT']) == 0 else os.environ['TRAIN_START_DT'])
 
-    
     assert data_end_dt_str<=download_end_dt_str, 'data end date after download end date!'
     assert data_start_dt_str>=download_start_dt_str, 'data start date before download start date!'
     assert train_start_dt_str<=data_end_dt_str, 'train start date before data start date!'
     assert train_start_dt_str>=data_start_dt_str, 'train start date before data end date!'
-    assert len(train_train_days)==len(train_test_days), 'train days config size != test days config size!'
+    assert len(train_lookback_days)==len(train_label_days), 'train days config size != test days config size!'
+    assert len(train_lookback_days)==len(train_ensemble_weights), 'train days config size != ensemble weights config size!'
+    
+    train_settings = []
+    for i in range(len(train_lookback_days)):
+        label_days = train_label_days[i]
+        lookback_days = train_lookback_days[i]
+        ensemble_weight = train_ensemble_weights[i]        
+        train_sample_manifolds = [max(1, min(5, i - lookback_days + min(5, lookback_days)) + 1) for i in range(lookback_days)]
+        prev_year_samples_before = samples_before
+        prev_year_samples_after = label_days + samples_after
+        train_settings.append({
+            "lookback_days": lookback_days,
+            "label_days": label_days,
+            "sample_manifolds": train_sample_manifolds,
+            "prev_year_samples_before": prev_year_samples_before,
+            "prev_year_samples_after": prev_year_samples_after,
+            "ensemble_weight": ensemble_weight
+        })
     
     # create config obj
     cfg = munch.munchify({
@@ -164,8 +187,10 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
         },
         'train': {            
             'start_dt': train_start_dt_str,
-            'train_days': train_train_days,
-            'test_days': train_test_days,
+            'end_dt': data_end_dt_str,
+            'label_max_high_weight': label_max_high_weight,
+            'label_max_close_weight': label_max_close_weight,
+            'settings': train_settings,
             'window_trading_days': window_trading_days,
             'lag_trading_days': lag_trading_days,
             'batch_size': 200
@@ -173,3 +198,9 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     })
     print(f'config> created from .env: {cfg}')
     return cfg
+
+def overwrite_end_dt(cfg, new_end_dt):
+    cfg.prepare.download_end_dt = new_end_dt
+    cfg.prepare.data_end_dt = new_end_dt
+    cfg.train.end_dt = new_end_dt
+    cfg.prepare.cache_dir = f'{cfg.base.cache_dir}/{format_build_date(new_end_dt)}/'
