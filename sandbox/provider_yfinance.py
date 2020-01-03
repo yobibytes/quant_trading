@@ -275,7 +275,8 @@ def prepare_stocks(cfg, data_stocks, overwrite=False):
             df = generate_rolling_windows(cfg, df)
             df = generate_loglag(cfg, df)
             df = df.loc[df.index >= cfg.train.start_dt]
-            # df.break_days.astype(int)
+            df.fillna(0, inplace=True)
+            df.break_days = df.break_days.astype(int)
             prep_stocks[k] = df
         save_pickle(pkl_file, prep_stocks)
     return prep_stocks
@@ -287,12 +288,10 @@ def prepare_benchmarks(cfg, data_benchmarks, overwrite=False):
         prep_benchmarks = munch.Munch()
         for k in data_benchmarks.tickers.keys():
             df = data_benchmarks.tickers[k].history[['open','high','low','close','volume']].copy()
-            df = df.loc[df.index >= cfg.prepare.data_start_dt]
-            prefix = f'{to_snake_case(k)}_'
-            df.rename(columns=dict([(c, f'{prefix}{c}') for c in df.columns]), inplace=True)            
-            df = generate_diff(cfg, df, prefix)
-            df = generate_rolling_windows(cfg, df, prefix)
-            df = generate_loglag(cfg, df, prefix)
+            df = df.loc[df.index >= cfg.prepare.data_start_dt]     
+            df = generate_diff(cfg, df)
+            df = generate_rolling_windows(cfg, df)
+            df = generate_loglag(cfg, df)
             df = df.loc[df.index >= cfg.train.start_dt]
             prep_benchmarks[k] = df
         save_pickle(pkl_file, prep_benchmarks)

@@ -290,3 +290,6 @@ def load_pickle(pth):
             return munch.munchify(pickle.load(fp))
     print(f"shared> failed to load pickle file: '{pth}'")    
     return None
+
+def prefix(lst, prefix):
+    return [f'{prefix}_{i}' for i in lst]

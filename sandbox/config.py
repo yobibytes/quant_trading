@@ -88,7 +88,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     # feature configurations
     window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
     lag_trading_days = [int(s.strip()) for s in os.environ['TRAIN_LAG_TRADING_DAYS'].strip().split(',')]
-    max_seq_len = int(os.environ.get('MODEL_MAX_SEQ_LEN', '40'))
+    max_samples = int(os.environ.get('MODEL_MAX_SAMPLES', '40'))
     max_manifold = int(os.environ.get('TRAIN_MAX_MANIFOLD', '5'))    
     samples_before = int(os.environ.get('TRAIN_PREV_YEAR_SAMPLES_BEFORE', '5'))    
     samples_after = int(os.environ.get('TRAIN_PREV_YEAR_SAMPLES_AFTER', '5'))    
@@ -129,9 +129,9 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
         
     # read time horizons
     train_lookback_days = [int(s.strip()) for s in os.environ['TRAIN_LOOKBACK_DAYS'].strip().split(',')]
-    train_label_days = [int(s.strip()) for s in os.environ['TRAIN_TEST_DAYS'].strip().split(',')]
+    train_label_days = [int(s.strip()) for s in os.environ['TRAIN_LABEL_DAYS'].strip().split(',')]
     train_ensemble_weights = [float(s.strip()) for s in os.environ['TRAIN_ENSEMBLE_WEIGHTS'].strip().split(',')]
-    train_required_data_days = max(train_lookback_days) + max(train_label_days) + max_seq_len
+    train_required_data_days = max(train_lookback_days) + max(train_label_days) + max_samples
     train_start_dt_str = format_date(end_dt - datetime.timedelta(days=train_required_data_days) if len(os.environ['TRAIN_START_DT']) == 0 else os.environ['TRAIN_START_DT'])
 
     assert data_end_dt_str<=download_end_dt_str, 'data end date after download end date!'
@@ -174,7 +174,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             }
         },
         'model': {
-            'max_seq_len': max_seq_len,
+            'max_samples': max_samples,
             'model_dir': f'{model_dir}/{format_build_date(download_end_dt_str)}/',
             'model_base_dir': f'{model_dir}/base/'
         },

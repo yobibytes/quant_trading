@@ -114,20 +114,20 @@
         }
     },
     "model": {
-        "max_seq_len": 40,
+        "max_samples": 40,
         "model_base_dir": "/mnt/c/notebooks/sandbox/model/base/",
-        "model_dir": "/mnt/c/notebooks/sandbox/model/20200102/"
+        "model_dir": "/mnt/c/notebooks/sandbox/model/20200103/"
     },
     "prepare": {
-        "cache_dir": "/mnt/c/notebooks/sandbox/cache/20200102/",
-        "data_end_dt": "2020-01-02",
-        "data_start_dt": "2019-06-06",
-        "download_end_dt": "2020-01-02",
-        "download_start_dt": "2019-03-21"
+        "cache_dir": "/mnt/c/notebooks/sandbox/cache/20200103/",
+        "data_end_dt": "2020-01-03",
+        "data_start_dt": "2019-06-07",
+        "download_end_dt": "2020-01-03",
+        "download_start_dt": "2019-03-22"
     },
     "train": {
         "batch_size": 200,
-        "end_dt": "2020-01-02",
+        "end_dt": "2020-01-03",
         "label_max_close_weight": 1.0,
         "label_max_high_weight": 3.0,
         "lag_trading_days": [
@@ -522,7 +522,7 @@
                 ]
             }
         ],
-        "start_dt": "2019-08-08",
+        "start_dt": "2019-08-09",
         "window_trading_days": [
             3,
             5,
