@@ -293,3 +293,12 @@ def load_pickle(pth):
 
 def prefix(lst, prefix):
     return [f'{prefix}_{i}' for i in lst]
+
+def mkdirs(pth):
+    if isinstance(pth, pathlib.PurePath):
+        p = pth
+    else:
+        p = pathlib.Path(pth)
+    if not p.is_dir():
+        p.mkdir(parents=True, exist_ok=True)
+    return str(p.resolve())    

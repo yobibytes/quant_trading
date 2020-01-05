@@ -76,8 +76,14 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     sys.path.append(current_dir)
     print(f"config> current directory:{current_dir}")
     
-    cache_dir = mkdirs(os.environ.get('CACHE_DIR', './cache/'))
-    model_dir = mkdirs(os.environ.get('MODEL_DIR', './model/'))
+    p = pathlib.Path(os.environ.get('CACHE_DIR', './cache/'))
+    if not p.is_dir():
+        p.mkdir(parents=True, exist_ok=True)
+    cache_dir = str(p.resolve())    
+    p = pathlib.Path(os.environ.get('MODEL_DIR', './model/'))
+    if not p.is_dir():
+        p.mkdir(parents=True, exist_ok=True)
+    model_dir = str(p.resolve())    
             
     # feature configurations
     window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
@@ -96,7 +102,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     if data_start_dt_str is not None:
         start_dt = parse_datetime(data_start_dt_str)
     else:
-        weeks = int(os.environ.get('DATA_PREPARE_LAST_WEEKS', '100'))        
+        weeks = int(os.environ.get('TRAIN_LAST_WEEKS', '30'))        
         start_dt = end_dt - datetime.timedelta(weeks=weeks)
         data_start_dt_str = format_date(start_dt)
     print(f"config> data period: from '{data_start_dt_str}' to '{data_end_dt_str}'")
@@ -133,25 +139,22 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     assert train_start_dt_str<=data_end_dt_str, 'train start date before data start date!'
     assert train_start_dt_str>=data_start_dt_str, 'train start date before data end date!'
     assert len(train_lookback_days)==len(train_label_days), 'train days config size != test days config size!'
-    assert len(train_lookback_days)==len(train_ensemble_weights), 'train days config size != ensemble weights config size!'    
+    assert len(train_lookback_days)==len(train_ensemble_weights), 'train days config size != ensemble weights config size!'
     
     train_settings = []
     for i in range(len(train_lookback_days)):
         label_days = train_label_days[i]
         lookback_days = train_lookback_days[i]
-        ensemble_weight = train_ensemble_weights[i]       
+        ensemble_weight = train_ensemble_weights[i]        
+        train_sample_manifolds = [max(1, min(5, i - lookback_days + min(5, lookback_days)) + 1) for i in range(lookback_days)]
         prev_year_samples_before = samples_before
-        prev_year_samples_after = label_days + samples_after 
-        # manifold the most recent training samples
-        train_sample_manifolds = ([1] * (prev_year_samples_before+prev_year_samples_after)) + [max(1, min(max_manifold, i - max_samples + min(max_manifold, max_samples)) + 1)+(i//10+1) for i in range(max_samples)]
+        prev_year_samples_after = label_days + samples_after
         train_settings.append({
-            "id": f"nr_{i+1}-lookback_{lookback_days}-label_{label_days}",
             "lookback_days": lookback_days,
             "label_days": label_days,
             "sample_manifolds": train_sample_manifolds,
             "prev_year_samples_before": prev_year_samples_before,
             "prev_year_samples_after": prev_year_samples_after,
-            "float_precision": 100.,
             "ensemble_weight": ensemble_weight
         })
     
