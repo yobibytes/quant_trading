@@ -160,14 +160,15 @@ def _load_tickers(cfg, key, interval='1d'):
     f_cache = pathlib.Path(f'{cfg.prepare.cache_dir}/{ticker_cfg.name}_{interval}.pkl')
     f_meta_cache = pathlib.Path(f'{cfg.prepare.cache_dir}/{ticker_cfg.name}_{interval}_meta.pkl')
     data = load_pickle(f_cache)
-    ticker_cfg = load_pickle(f_meta_cache)
+    meta = load_pickle(f_meta_cache)
     if data is None or ticker_cfg is None:
+        meta = ticker_cfg
         data = munch.munchify({
-            'downloads': _download_tickers(cfg, ticker_cfg, interval),
-            'tickers': _data_tickers(cfg, ticker_cfg, interval),
+            'downloads': _download_tickers(cfg, meta, interval),
+            'tickers': _data_tickers(cfg, meta, interval),
         })
         save_tickers(cfg, meta, data, interval)
-    return ticker_cfg, data
+    return meta, data
 
 
 def save_tickers(cfg, meta, data, interval='1d'):
@@ -272,8 +273,8 @@ def prepare_stocks(cfg, data_stocks, overwrite=False):
         prep_stocks = munch.Munch()
         for k in data_stocks.tickers.keys():
             df = data_stocks.tickers[k].history.copy()
-            print(f"shared> prepare stock '{k}' from '{cfg.prepare.data_start_dt}' (avail: '{format_date(df.index[0])}') to '{df.index[-1]}'")
-            df = df.loc[df.index >= cfg.prepare.data_start_dt]
+            print(f"shared> prepare stock '{k}' from '{cfg.prepare.data_start_dt}' (avail: '{format_date(df.index[0])}') to '{cfg.prepare.data_end_dt}'")
+            df = df.loc[(df.index >= cfg.prepare.data_start_dt) & (df.index <= cfg.prepare.data_end_dt)]
             df = generate_dt(cfg, df)
             df = generate_diff(cfg, df)
             df = generate_rolling_windows(cfg, df)
@@ -293,8 +294,8 @@ def prepare_benchmarks(cfg, data_benchmarks, overwrite=False):
         prep_benchmarks = munch.Munch()
         for k in data_benchmarks.tickers.keys():            
             df = data_benchmarks.tickers[k].history[['open','high','low','close','volume']].copy()
-            print(f"shared> prepare benchmark '{k}' from '{cfg.prepare.data_start_dt}' (avail: '{format_date(df.index[0])}') to '{df.index[-1]}'")
-            df = df.loc[df.index >= cfg.prepare.data_start_dt]     
+            print(f"shared> prepare benchmark '{k}' from '{cfg.prepare.data_start_dt}' (avail: '{format_date(df.index[0])}') to '{cfg.prepare.data_end_dt}'")
+            df = df.loc[(df.index >= cfg.prepare.data_start_dt) & (df.index <= cfg.prepare.data_end_dt)] 
             df = generate_diff(cfg, df)
             df = generate_rolling_windows(cfg, df)
             df = generate_loglag(cfg, df)
@@ -360,7 +361,7 @@ def encode_benchmarks(cfg, prep_benchmarks, prep_stocks, overwrite=False):
 def prepare_submodel_data(cfg, submodel_settings, enc_stocks=None, enc_benchmarks=None, overwrite=False):
     submodel_dir = mkdirs(f'{cfg.prepare.cache_dir}/{submodel_settings.id}')
     pkl_file = f'{submodel_dir}/submodel_data.pkl'
-    submodel_data = load_pickle(pkl_file)    
+    submodel_data = load_pickle(pkl_file)
     if overwrite or submodel_data is None:
         if enc_stocks is None or enc_benchmarks is None:
             raise BaseException(f"sm-{submodel_settings.id}> Missing submodel data!")
@@ -385,7 +386,7 @@ def prepare_submodel_data(cfg, submodel_settings, enc_stocks=None, enc_benchmark
     return submodel_data
 
 
-def generate_samples_iterator(cfg, submodel_settings, ticker_data):
+def generate_samples_iterator(cfg, submodel_settings, ticker_data, is_stock=False):
     samples_iter = []
     end_dt = parse_datetime(cfg.prepare.download_end_dt)
     ticker_dates = ticker_data.iloc[ticker_data.index <= end_dt].index    
@@ -398,8 +399,12 @@ def generate_samples_iterator(cfg, submodel_settings, ticker_data):
             prev_year_idx = len(ticker_dates) - (i + 1)
             break
     if prev_year_idx is not None:
-        last_idx = prev_year_idx + submodel_settings.prev_year_samples_after
-        for seq_idx in reversed(range(submodel_settings.prev_year_samples_before + submodel_settings.prev_year_samples_after)):
+        samples_after = submodel_settings.prev_year_samples_after
+        if not is_stock:
+            # be convervative and pre-calculate more benchmark data
+            samples_after = int(samples_after * 2)
+        last_idx = prev_year_idx + samples_after
+        for seq_idx in reversed(range(submodel_settings.prev_year_samples_before + samples_after)):
             seq_nr += 1
             seq_end_idx = last_idx - seq_idx
             if seq_end_idx - submodel_settings.lookback_days > 0:
@@ -423,7 +428,11 @@ def generate_samples_iterator(cfg, submodel_settings, ticker_data):
         print(f"WARN seq-{seq_nr}> no previous year data available!")
 
     # current year
-    for seq_idx in reversed(range(cfg.model.max_samples)):
+    max_samples = submodel_settings.max_samples
+    if not is_stock:
+        # be convervative and pre-calculate more benchmark data
+        max_samples = int(max_samples * 1.5)
+    for seq_idx in reversed(range(max_samples)):
         seq_nr += 1
         last_idx = seq_idx + 1
         if len(ticker_data) > last_idx + submodel_settings.lookback_days + submodel_settings.label_days:
@@ -451,7 +460,8 @@ def generate_samples_iterator(cfg, submodel_settings, ticker_data):
 def generate_relative_benchmarks_data(cfg, submodel_settings, benchmarks_data):
     print(f"sm-{submodel_settings.id}> generating relative benchmarks data ...")
     rel_benchmarks_data = {}
-    samples_iter = generate_samples_iterator(cfg, submodel_settings, next(iter(benchmarks_data.values())))
+    samples_iter = generate_samples_iterator(cfg, submodel_settings, next(iter(benchmarks_data.values())), False)
+    # default: convert values to percent
     float_precision = submodel_settings.float_precision
     for si in samples_iter:
         bm_X = None
@@ -475,14 +485,14 @@ def generate_relative_benchmarks_data(cfg, submodel_settings, benchmarks_data):
         rel_benchmarks_data[si.lookback_end_date] = bm_X
     return rel_benchmarks_data
 
-def generate_samples(cfg, submodel_settings, ticker_data, rel_benchmarks_data):
+def generate_samples(cfg, submodel_settings, ticker_data, rel_benchmarks_data):    
     from keras.preprocessing.sequence import pad_sequences
     train_dates = []
     X = []
     Y = []
     samples_iter = generate_samples_iterator(cfg, submodel_settings, ticker_data)
     float_precision = submodel_settings.float_precision
-    for si in samples_iter:
+    for idx, si in enumerate(samples_iter):
         # base_price = price(lookback_end_date)
         base_price = ticker_data.loc[si.lookback_end_date].close
         label_data = ticker_data.iloc[(ticker_data.index >= si.label_start_date) & (ticker_data.index <= si.label_end_date)]    
@@ -499,15 +509,19 @@ def generate_samples(cfg, submodel_settings, ticker_data, rel_benchmarks_data):
         x[relative_cols] /= base_price / float_precision
         x[diff_cols] -= float_precision
         # enrich x with relative benchmark columns
-        bm_x = rel_benchmarks_data[si.lookback_end_date]
-        x = pd.merge(x, bm_x, how='left', left_index=True, right_index=True)        
-        x.fillna(0, inplace=True)
-        seq = x.apply(tuple, axis=1).apply(list)
-        # assert len(seq) == submodel_settings.lookback_days, f'len(seq)={len(seq)} must equal lookback_days={submodel_settings.lookback_days}'
-        seq = pad_sequences([seq.tolist()], submodel_settings.lookback_days, dtype='float32')
-        seq = pd.Series(seq.tolist()).apply(np.asarray)
-        for manifold in range(submodel_settings.sample_manifolds[si.seq_nr - 1 + (len(submodel_settings.sample_manifolds) - len(samples_iter))]):
-            train_dates.append(si.lookback_end_date)
-            X.append(seq)
-            Y.append(y)
+        if si.lookback_end_date in rel_benchmarks_data:
+            bm_x = rel_benchmarks_data[si.lookback_end_date]        
+            x = pd.merge(x, bm_x, how='left', left_index=True, right_index=True)        
+            x.fillna(0, inplace=True)
+            seq = x.apply(tuple, axis=1).apply(list)
+            # assert len(seq) == submodel_settings.lookback_days, f'len(seq)={len(seq)} must equal lookback_days={submodel_settings.lookback_days}'
+            seq = pad_sequences([seq.tolist()], submodel_settings.lookback_days, dtype='float32')
+            seq = pd.Series(seq.tolist()).apply(np.asarray)
+            for manifold in range(submodel_settings.sample_manifolds[idx + (len(submodel_settings.sample_manifolds) - len(samples_iter))]):
+                train_dates.append(si.lookback_end_date)
+                X.append(seq)
+                Y.append(y)
+        else:
+            # missing stock data (no matching benchmarks found)
+            continue
     return (train_dates, X, Y)

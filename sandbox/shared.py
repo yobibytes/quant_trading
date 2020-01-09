@@ -246,14 +246,15 @@ class ProviderException(Exception):
 
 
 def filter_dates_generator(cfg, cfg_idx, steps=1):
-    train_days = cfg.train.train_days[cfg_idx]
-    predict_days = cfg.train.test_days[cfg_idx]
+    settings = cfg.train.settings[0]
+    lookback_days = settings.lookback_days
+    label_days = settings.label_days
     data_end_dt = parse_datetime(cfg.prepare.data_end_dt)    
     train_start_dt = parse_datetime(cfg.train.start_dt)
     while(True):
-        train_end_dt = train_start_dt + datetime.timedelta(days=train_days)
+        train_end_dt = train_start_dt + datetime.timedelta(days=lookback_days)
         predict_start_dt = train_end_dt + datetime.timedelta(days=1)
-        predict_end_dt = predict_start_dt + datetime.timedelta(days=predict_days-1)
+        predict_end_dt = predict_start_dt + datetime.timedelta(days=label_days-1)
         if predict_end_dt > data_end_dt:
             break
         else:

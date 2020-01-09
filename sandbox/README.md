@@ -10,6 +10,14 @@ import platform;
 print(platform.architecture());
 ```
 
+# (Optional) Reboot WSL
+
+# CMD (admin)
+```cmd
+net stop LxssManager
+net start LxssManager
+```
+
 # Environment setup
 
 ```power-shell (with admin rights)
