@@ -114,9 +114,10 @@
         }
     },
     "model": {
-        "base_dir": "/mnt/c/notebooks/sandbox/model/20200109/",
+        "base_dir": "/mnt/c/notebooks/sandbox/model/20200110/",
         "batch_size": 200,
-        "early_stopping_patience": 3,
+        "early_stopping_patience": 10,
+        "lstm_hidden_size": 256,
         "max_epochs": 1000,
         "max_samples": 40,
         "model_weights_file_name": "model_weights.hdf5",
@@ -126,9 +127,9 @@
     "prepare": {
         "cache_dir": "/mnt/c/notebooks/sandbox/cache/20200107/",
         "data_end_dt": "2020-01-07",
-        "data_start_dt": "2018-02-08",
+        "data_start_dt": "2018-02-09",
         "download_end_dt": "2020-01-07",
-        "download_start_dt": "2017-11-23"
+        "download_start_dt": "2017-11-24"
     },
     "train": {
         "end_dt": "2020-01-07",
@@ -844,7 +845,7 @@
                 ]
             }
         ],
-        "start_dt": "2019-08-15",
+        "start_dt": "2019-08-16",
         "window_trading_days": [
             3,
             5,

@@ -89,7 +89,8 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
         max_epochs = int(os.environ.get('TRAIN_MAX_EPOCHS', '1000'))
         label_max_high_weight = float(os.environ.get('TRAIN_LABEL_MAX_HIGH_WEIGHT', '3.'))    
         label_max_close_weight = float(os.environ.get('TRAIN_LABEL_MAX_CLOSE_WEIGHT', '1.'))   
-        early_stopping_patience = int(os.environ.get('TRAIN_EARLY_STOPPING_PATIENCE', '3'))
+        early_stopping_patience = int(os.environ.get('TRAIN_EARLY_STOPPING_PATIENCE', '5'))
+        lstm_hidden_size = int(os.environ.get('TRAIN_LSTM_HIDDEN_SIZE', '256'))
         
 
         # parse start and end dates
@@ -185,7 +186,8 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
                 'batch_size': batch_size,
                 'max_epochs': max_epochs,
                 'early_stopping_patience': early_stopping_patience,
-                'validaion_monitor': 'val_mean_squared_error'
+                'validaion_monitor': 'val_mean_squared_error',
+                'lstm_hidden_size': lstm_hidden_size
             },
             'prepare': {
                 'cache_dir': f'{cache_dir}/{format_build_date(download_end_dt_str)}/',
@@ -226,6 +228,9 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
         - model:
             - max_samples: {cfg.model.max_samples}
             - batch_size: {cfg.model.batch_size}
+            - lstm_hidden_size: {cfg.model.lstm_hidden_size}
+            - early_stopping_patience: {cfg.model.early_stopping_patience}
+            - validaion_monitor: {cfg.model.validaion_monitor}
             - max_epochs: {cfg.model.max_epochs}
             - base_dir: {cfg.model.base_dir}            
         ''')
