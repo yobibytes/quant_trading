@@ -4,203 +4,162 @@ import pathlib
 import sys
 
 import munch
+import pickle
 import numpy as np
 import pandas as pd
-import qgrid
+
+from keras.preprocessing.sequence import pad_sequences
+from keras.models import Model, Sequential
+from keras.layers import LSTM, Dense, BatchNormalization, Masking
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+import keras.backend as K
+
 from shared import *
-from provider_yfinance import *
-from dotenv import load_dotenv, find_dotenv
-    
-def save_config_json(cfg, cfg_path='./config.json'):
-    save_config(cfg, cfg_path)
+import provider_yfinance as provider
 
+def load_model_weights(cfg, mdl, pth_model_weights, ticker_name=''):
+    if ticker_name:
+        pth_model_weights = pth_model_weights.joinpath(ticker_name)
+        mkdirs(pth_model_weights)
+    f_model_weights = pth_model_weights.joinpath(cfg.model.model_weights_file_name)
+    if f_model_weights.is_file():
+        try:        
+            mdl.load_weights(f_model_weights)
+            print(f"model> loaded model weights from '{f_model_weights}'")
+            return mdl
+        except ValueError as e:
+            print(f"WARN model> failed to load model weights from '{f_model_weights}': ${e}")
+    return None
 
-def load_config_json(cfg_path='./config.json'):
-    return load_config(cfg_path)
+def load_optimizer_weights(cfg, mdl, pth_optimizer_weights, ticker_name=''):
+    if ticker_name:
+        pth_optimizer_weights = pth_optimizer_weights.joinpath(ticker_name)
+        mkdirs(pth_optimizer_weights)
+    f_optimizer_weights = pth_optimizer_weights.joinpath(cfg.model.optimizer_weights_file_name)
+    if f_optimizer_weights.is_file():
+        mdl._make_train_function()
+        try:
+            with open(f_optimizer_weights.resolve(), 'rb') as f:
+                mdl.optimizer.set_weights(pickle.load(f))    
+                print(f"model> loaded optimizer weights from '{f_optimizer_weights}'")
+            return mdl
+        except ValueError as e:
+            print(f"WARN model> failed to load optimizer weights from '{f_optimizer_weights}': ${e}")
+    return None
 
-
-def save_config_yaml(cfg, cfg_path='./config.yaml'):
-    save_config(cfg, cfg_path)
-
-
-def load_config_yaml(cfg_path='./config.yaml'):
-    return load_config(cfg_path)
-
-
-def load_config(cfg_path='./config.json'):
-    load_dotenv(find_dotenv(), verbose=True)
-    np.random.seed(int(os.environ['RANDOM_SEED']))
-    f_cfg = pathlib.Path(cfg_path)
-    if f_cfg.is_file():
-        with open(f_cfg, 'r', encoding='utf-8') as fd:
-            if f_cfg.suffix == '.json':
-                cfg = munch.Munch.fromJSON(fd.read())
+def load_weights(cfg, submodel_settings, mdl, ticker_name='', train_mode=True):
+    pth_submodel = pathlib.Path(f"{cfg.model.base_dir}/{submodel_settings.id}") 
+    model_weights_loaded = False
+    # try to load current ticker weights
+    if load_model_weights(cfg, mdl, pth_submodel, ticker_name) is None:
+        # try to load template + ticker_name
+        if (not ticker_name) or load_model_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir), ticker_name) is None:
+            # try to load current overall weights
+            if (not ticker_name) or load_model_weights(cfg, mdl, pth_submodel) is None:
+                # try to load template overall weights
+                if load_model_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir)) is None:
+                    model_weights_loaded = 'tpl-overall'
             else:
-                cfg = munch.Munch.fromYAML(fd.read())
-            return cfg
+                model_weights_loaded = 'overall'
+        else:            
+            model_weights_loaded = 'tpl-ticker'
     else:
-        return None
+        if ticker_name:
+            model_weights_loaded = 'ticker'
+        else:
+            model_weights_loaded = 'overall'
+    print(f'> {model_weights_loaded}')
+    if not train_mode:
+        if ticker_name and model_weights_loaded != 'ticker':
+            raise BaseException(f"model> model ticker weights doesn't exists in '{pth_submodel}'!")
+        elif not ticker_name and model_weights_loaded != 'overall':
+            raise BaseException(f"model> model overall weights doesn't exists in '{cfg.model.model_templates_dir}'!")
+    # try to load current ticker weights
+    if load_optimizer_weights(cfg, mdl, pth_submodel, ticker_name) is None:
+        # try to load template + ticker_name
+        if (not ticker_name) or load_optimizer_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir), ticker_name) is None:
+            # try to load current overall weights
+            if (not ticker_name) or load_optimizer_weights(cfg, mdl, pth_submodel) is None:
+                # try to load template overall weights
+                load_optimizer_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir))
 
-def save_config(cfg, cfg_path='./config.json'):
-    f_cfg = pathlib.Path(cfg_path)
-    if f_cfg.suffix == '.json':
-        cfg_serialized = cfg.toJSON(indent=4, sort_keys=True)
-    else:
-        cfg_serialized = cfg.toYAML(allow_unicode=True, default_flow_style=False)
-    with open(f_cfg, 'w', encoding='utf-8') as fd:
-        fd.write(cfg_serialized)
-    print(f"config> saved config to '{f_cfg.resolve()}'")
+def save_weights(cfg, submodel_settings, mdl, ticker_name=''):
+    print(f"model> trying to save weights ...") 
+    pth_submodel = pathlib.Path(f"{cfg.model.base_dir}/{submodel_settings.id}/{ticker_name}")
+    f_model_weights = pth_submodel.joinpath(cfg.model.model_weights_file_name)
+    f_optimizer_weights = pth_submodel.joinpath(cfg.model.optimizer_weights_file_name)
+    mkdirs(pth_submodel)
+    mdl.save_weights(f_model_weights)
+    print(f"model> saved model weights to '{f_model_weights.resolve()}'")
+    with open(f_optimizer_weights.resolve(), 'wb') as f:
+        pickle.dump(K.batch_get_value(getattr(mdl.optimizer, 'weights')), f)
+        print(f"model> saved optimizer weights to '{f_optimizer_weights.resolve()}'")
 
-def save_config(cfg, cfg_path='./config.json'):
-    f_cfg = pathlib.Path(cfg_path)
-    if f_cfg.suffix == '.json':
-        cfg_serialized = cfg.toJSON(indent=4, sort_keys=True)
-    else:
-        cfg_serialized = cfg.toYAML(allow_unicode=True, default_flow_style=False)
-    with open(f_cfg, 'w', encoding='utf-8') as fd:
-        fd.write(cfg_serialized)
-    print(f"config> saved config to '{f_cfg.resolve()}'")
-    
-def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
-    if cfg_path is None:
-        cfg_path = os.environ.get('CONFIG_FILE_PATH', './config.json')
+def create_model(cfg, submodel_settings, mdl_data, ticker_name='', train_mode=True):
+    num_samples = mdl_data.shape[0]
+    num_features = len(mdl_data.X.head(1).tolist()[0][0][0][0])
+    input_length = submodel_settings.lookback_days
+    input_dim = num_features
+    lstm_dim = cfg.model.lstm_hidden_size
+    output_dim = 1
+    mdl = Sequential()
+    mdl.add(BatchNormalization(input_shape=(input_length, input_dim)))
+    mdl.add(Masking())    
+    mdl.add(LSTM(lstm_dim, dropout=.2, recurrent_dropout=.2, return_sequences=True, activation="softsign"))
+    mdl.add(LSTM(lstm_dim, dropout=.2, recurrent_dropout=.2, return_sequences=True, activation="softsign"))
+    mdl.add(LSTM(lstm_dim, dropout=.2, recurrent_dropout=.2, activation="softsign"))
+    mdl.add(Dense(output_dim))
+    mdl.compile(loss='mean_squared_error', optimizer='adam', metrics=['mean_absolute_error', 'mean_squared_error'])
+    print(f'model> model created\n:{mdl.summary()}')
+    load_weights(cfg, submodel_settings, mdl, ticker_name, train_mode)
+    return mdl
 
-    cfg = load_config(cfg_path)
-    if not overwrite and cfg is not None:
-        print(f"config> read from config file: '{cfg}'")
-        return cfg
-    
-    # add current directory to sys.path
-    p = pathlib.Path('.').resolve()
-    current_dir = str(p)
-    sys.path.append(current_dir)
-    print(f"config> current directory:{current_dir}")
-    
-    p = pathlib.Path(os.environ.get('CACHE_DIR', './cache/'))
-    if not p.is_dir():
-        p.mkdir(parents=True, exist_ok=True)
-    cache_dir = str(p.resolve())    
-    p = pathlib.Path(os.environ.get('MODEL_DIR', './model/'))
-    if not p.is_dir():
-        p.mkdir(parents=True, exist_ok=True)
-    model_dir = str(p.resolve())    
-            
-    # feature configurations
-    window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
-    lag_trading_days = [int(s.strip()) for s in os.environ['TRAIN_LAG_TRADING_DAYS'].strip().split(',')]
-    max_samples = int(os.environ.get('MODEL_MAX_SAMPLES', '40'))
-    max_manifold = int(os.environ.get('TRAIN_MAX_MANIFOLD', '5'))    
-    samples_before = int(os.environ.get('TRAIN_PREV_YEAR_SAMPLES_BEFORE', '5'))    
-    samples_after = int(os.environ.get('TRAIN_PREV_YEAR_SAMPLES_AFTER', '5'))    
-    label_max_high_weight = float(os.environ.get('TRAIN_LABEL_MAX_HIGH_WEIGHT', '3.'))    
-    label_max_close_weight = float(os.environ.get('TRAIN_LABEL_MAX_CLOSE_WEIGHT', '1.'))    
+def train_model(cfg, submodel_settings, mdl, mdl_data, ticker_name=''):
+    num_samples = mdl_data.shape[0]
+    num_features = len(mdl_data.X.head(1).tolist()[0][0][0][0])
+    input_length = submodel_settings.lookback_days
+    input_dim = num_features    
+    output_dim = 1
+    X = np.hstack(np.asarray(mdl_data.X)).reshape(num_samples, input_length, input_dim)
+    y = np.hstack(np.asarray(mdl_data.y)).reshape(num_samples, output_dim)
+    pth_submodel = f"{cfg.model.base_dir}/{submodel_settings.id}/{ticker_name}"
+    mkdirs(pth_submodel)
+    monitor = cfg.model.validation_monitor
+    patience = cfg.model.early_stopping_patience
+    fit_params = {
+        "batch_size": cfg.model.batch_size,
+        "epochs": cfg.model.max_epochs,
+        "verbose": 1,
+        "validation_split": 0.1,
+        "shuffle": True,
+        "callbacks": [
+            EarlyStopping(verbose=True, patience=patience, monitor=monitor),
+            ModelCheckpoint(f"{pth_submodel}/best_weights_lstm-{cfg.model.lstm_hidden_size}_epoch-{{epoch:02d}}_val-{{{monitor}:.4f}}.hdf5", monitor=monitor, verbose=1, save_best_only=True)
+        ]
+    }
+    print('model> fitting ... (Hit CTRL-C to stop early)')
+    history = None
+    try:
+        history = mdl.fit(X, y, **fit_params)
+    except KeyboardInterrupt:
+        print('model> training stopped early!')
+        history = mdl.history        
+    save_weights(cfg, submodel_settings, mdl, ticker_name)
+    return history
 
-    # parse start and end dates
-    data_end_dt_str = format_date() if len(os.environ['DATA_END_DT']) == 0 else os.environ['DATA_END_DT']
-    end_dt = parse_datetime(data_end_dt_str)
-    data_start_dt_str = None if len(os.environ['DATA_START_DT']) == 0 else os.environ['DATA_START_DT']
-    if data_start_dt_str is not None:
-        start_dt = parse_datetime(data_start_dt_str)
-    else:
-        weeks = int(os.environ.get('TRAIN_LAST_WEEKS', '30'))        
-        start_dt = end_dt - datetime.timedelta(weeks=weeks)
-        data_start_dt_str = format_date(start_dt)
-    print(f"config> data period: from '{data_start_dt_str}' to '{data_end_dt_str}'")
-    
-    max_window_trading_days = max(window_trading_days)
-    conservative_download_days = math.ceil(7 + (max_window_trading_days / 5. * 7.))
-    download_start_dt = start_dt - datetime.timedelta(days=conservative_download_days)
-    download_start_dt_str = format_date(download_start_dt)
-    download_end_dt_str = data_end_dt_str
-    cache_enabled = is_true(os.environ['CACHE_ENABLED'])
-    print(f"config> download period: from '{download_start_dt_str}' to '{download_end_dt_str}'")
-    
-    # read selected features
-    if len(os.environ['BENCHMARKS']) > 0:
-        benchmarks = sorted([s.upper().strip() for s in os.environ['BENCHMARKS'].strip().split(',')])
-    else:
-        benchmarks = get_benchmarks()
-    if len(os.environ['STOCKS']) > 0:
-        stocks = sorted([s.upper().strip() for s in os.environ['STOCKS'].strip().split(',')])
-    else:
-        stocks = get_stocks(selected_index)
-    print(f"config> benchmarks: '{benchmarks}'")
-    print(f"config> stocks: '{stocks}'")
-        
-    # read time horizons
-    train_lookback_days = [int(s.strip()) for s in os.environ['TRAIN_LOOKBACK_DAYS'].strip().split(',')]
-    train_label_days = [int(s.strip()) for s in os.environ['TRAIN_LABEL_DAYS'].strip().split(',')]
-    train_ensemble_weights = [float(s.strip()) for s in os.environ['TRAIN_ENSEMBLE_WEIGHTS'].strip().split(',')]
-    train_required_data_days = max(train_lookback_days) + max(train_label_days) + max_samples
-    train_start_dt_str = format_date(end_dt - datetime.timedelta(days=train_required_data_days) if len(os.environ['TRAIN_START_DT']) == 0 else os.environ['TRAIN_START_DT'])
-
-    assert data_end_dt_str<=download_end_dt_str, 'data end date after download end date!'
-    assert data_start_dt_str>=download_start_dt_str, 'data start date before download start date!'
-    assert train_start_dt_str<=data_end_dt_str, 'train start date before data start date!'
-    assert train_start_dt_str>=data_start_dt_str, 'train start date before data end date!'
-    assert len(train_lookback_days)==len(train_label_days), 'train days config size != test days config size!'
-    assert len(train_lookback_days)==len(train_ensemble_weights), 'train days config size != ensemble weights config size!'
-    
-    train_settings = []
-    for i in range(len(train_lookback_days)):
-        label_days = train_label_days[i]
-        lookback_days = train_lookback_days[i]
-        ensemble_weight = train_ensemble_weights[i]        
-        train_sample_manifolds = [max(1, min(5, i - lookback_days + min(5, lookback_days)) + 1) for i in range(lookback_days)]
-        prev_year_samples_before = samples_before
-        prev_year_samples_after = label_days + samples_after
-        train_settings.append({
-            "lookback_days": lookback_days,
-            "label_days": label_days,
-            "sample_manifolds": train_sample_manifolds,
-            "prev_year_samples_before": prev_year_samples_before,
-            "prev_year_samples_after": prev_year_samples_after,
-            "ensemble_weight": ensemble_weight
-        })
-    
-    # create config obj
-    cfg = munch.munchify({
-        'base': {
-            'current_dir': current_dir,
-            'config_file_path': str(pathlib.Path(cfg_path).resolve()),
-            'cache_dir': cache_dir,
-            'cache_enabled': cache_enabled,
-            'model_dir': model_dir
-        },  
-        'datasets': {
-            'raw': {
-                'benchmarks': benchmarks,
-                'stocks': stocks
-            }
-        },
-        'model': {
-            'max_samples': max_samples,
-            'model_dir': f'{model_dir}/{format_build_date(download_end_dt_str)}/',
-            'model_base_dir': f'{model_dir}/base/'
-        },
-        'prepare': {
-            'cache_dir': f'{cache_dir}/{format_build_date(download_end_dt_str)}/',
-            'download_start_dt': download_start_dt_str,
-            'download_end_dt': download_end_dt_str,
-            'data_start_dt': data_start_dt_str,
-            'data_end_dt': data_end_dt_str
-        },
-        'train': {            
-            'start_dt': train_start_dt_str,
-            'end_dt': data_end_dt_str,
-            'label_max_high_weight': label_max_high_weight,
-            'label_max_close_weight': label_max_close_weight,
-            'settings': train_settings,
-            'window_trading_days': window_trading_days,
-            'lag_trading_days': lag_trading_days,
-            'batch_size': 200
-        }
-    })
-    print(f'config> created from .env: {cfg}')
-    return cfg
-
-def overwrite_end_dt(cfg, new_end_dt):
-    cfg.prepare.download_end_dt = new_end_dt
-    cfg.prepare.data_end_dt = new_end_dt
-    cfg.train.end_dt = new_end_dt
-    cfg.prepare.cache_dir = f'{cfg.base.cache_dir}/{format_build_date(new_end_dt)}/'
+def train_full(cfg, start_settings_idx=0):
+    monitor = cfg.model.validation_monitor
+    patience = cfg.model.early_stopping_patience
+    for submodel_settings in cfg.train.settings[start_settings_idx:]:
+        print(f"sm-{submodel_settings.id}> training submodel ...")
+        mdl_data = provider.prepare_submodel_data(cfg, submodel_settings)
+        mdl = create_model(cfg, submodel_settings, mdl_data)
+        history = train_model(cfg, submodel_settings, mdl, mdl_data)
+        print(f"sm-{submodel_settings.id}> overall-{monitor} (best epoch): {history.history[monitor][np.max(history.epoch)-patience]}")
+        print(f"sm-{submodel_settings.id}> overall-{monitor} (+-5 around best epoch): {np.mean(history.history[monitor][(np.max(history.epoch)-patience-5):(np.max(history.epoch)-patience+5)])}")
+        for ticker_name in mdl_data.ticker.unique().tolist():
+            ticker_data = mdl_data[mdl_data.ticker==ticker_name]
+            mdl = create_model(cfg, submodel_settings, ticker_data, ticker_name)
+            history = train_model(cfg, submodel_settings, mdl, ticker_data, ticker_name)
+            print(f"sm-{submodel_settings.id}> {ticker_name}-{monitor} (best epoch): {history.history[monitor][np.max(history.epoch)-patience]}")
+            print(f"sm-{submodel_settings.id}> {ticker_name}-{monitor} (+-5 around best epoch): {np.mean(history.history[monitor][(np.max(history.epoch)-patience-5):(np.max(history.epoch)-patience+5)])}")        

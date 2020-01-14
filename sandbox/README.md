@@ -80,6 +80,8 @@ make
 sudo make install
 sudo pip install TA-Lib
 sudo jupyter labextension install @jupyter-widgets/jupyterlab-manager
+jupyter notebook --generate-config
+jupyter notebook password
 cd /mnt/c/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
 
 ```

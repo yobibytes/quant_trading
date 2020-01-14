@@ -77,6 +77,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
 
         cache_dir = mkdirs(os.environ.get('CACHE_DIR', './cache/'))
         model_dir = mkdirs(os.environ.get('MODEL_DIR', './model/'))
+        model_templates_dir = mkdirs(os.environ.get('MODEL_DIR', './model/templates/'))
 
         # feature configurations
         window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
@@ -152,7 +153,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             # manifold the most recent training samples
             train_sample_manifolds = ([1] * (prev_year_samples_before + prev_year_samples_after)) + [max(1, min(max_manifold, i - submodel_max_samples + min(max_manifold, submodel_max_samples)) + 1)+(i//10) for i in range(submodel_max_samples)]
             submodel_settings.append({
-                "id": f"nr_{i+1}-lookback_{lookback_days}-label_{label_days}",
+                "id": f"lookback_{lookback_days}-label_{label_days}",
                 "lookback_days": lookback_days,
                 "label_days": label_days,
                 "sample_manifolds": train_sample_manifolds,
@@ -181,12 +182,13 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             'model': {
                 'max_samples': max_samples,
                 'base_dir': f'{model_dir}/{format_build_date(download_end_dt_str)}/',
+                'model_templates_dir': model_templates_dir,
                 'model_weights_file_name': 'model_weights.hdf5',
                 'optimizer_weights_file_name': 'optimizer_weights.pkl',
                 'batch_size': batch_size,
                 'max_epochs': max_epochs,
                 'early_stopping_patience': early_stopping_patience,
-                'validaion_monitor': 'val_mean_squared_error',
+                'validation_monitor': 'val_mean_squared_error',
                 'lstm_hidden_size': lstm_hidden_size
             },
             'prepare': {
@@ -230,7 +232,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             - batch_size: {cfg.model.batch_size}
             - lstm_hidden_size: {cfg.model.lstm_hidden_size}
             - early_stopping_patience: {cfg.model.early_stopping_patience}
-            - validaion_monitor: {cfg.model.validaion_monitor}
+            - validation_monitor: {cfg.model.validation_monitor}
             - max_epochs: {cfg.model.max_epochs}
             - base_dir: {cfg.model.base_dir}            
         ''')
@@ -241,3 +243,4 @@ def overwrite_end_dt(cfg, new_end_dt):
     cfg.prepare.data_end_dt = new_end_dt
     cfg.train.end_dt = new_end_dt
     cfg.prepare.cache_dir = f'{cfg.base.cache_dir}/{format_build_date(new_end_dt)}/'
+    cfg.model.base_dir = f'{cfg.base.model_dir}/{format_build_date(new_end_dt)}/'
