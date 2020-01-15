@@ -10,6 +10,23 @@ import qgrid
 from shared import *
 from provider_yfinance import *
 from dotenv import load_dotenv, find_dotenv
+
+def print_env():
+    import tensorflow as tf
+    from numba import cuda
+    # tf.config.set_soft_device_placement(True)
+    tf.debugging.set_log_device_placement(True)
+
+    print("TF version: {}".format(tf.__version__))
+    print("Keras version: {}".format(tf.keras.__version__))
+
+    gpu_test = tf.random.uniform([3, 3])
+    print(f"Is there a GPU available: {tf.test.is_gpu_available()}")
+    print(f"Is the Tensor on GPU #0: {gpu_test.device.endswith('GPU:0')}")
+    print(f"Device name: {gpu_test.device}")
+    print(f"Eager Execution enabled: {tf.executing_eagerly()}")
+
+
     
 def save_config_json(cfg, cfg_path='./config.json'):
     save_config(cfg, cfg_path)
@@ -77,7 +94,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
 
         cache_dir = mkdirs(os.environ.get('CACHE_DIR', './cache/'))
         model_dir = mkdirs(os.environ.get('MODEL_DIR', './model/'))
-        model_templates_dir = mkdirs(os.environ.get('MODEL_DIR', './model/templates/'))
+        model_templates_dir = mkdirs(os.path.join(os.environ.get('MODEL_DIR', './model/templates/'), 'base'))
 
         # feature configurations
         window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
@@ -92,6 +109,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
         label_max_close_weight = float(os.environ.get('TRAIN_LABEL_MAX_CLOSE_WEIGHT', '1.'))   
         early_stopping_patience = int(os.environ.get('TRAIN_EARLY_STOPPING_PATIENCE', '5'))
         lstm_hidden_size = int(os.environ.get('TRAIN_LSTM_HIDDEN_SIZE', '256'))
+        learning_rate = float(os.environ.get('TRAIN_LEARNING_RATE', '0.0001'))   
         
 
         # parse start and end dates
@@ -189,7 +207,8 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
                 'max_epochs': max_epochs,
                 'early_stopping_patience': early_stopping_patience,
                 'validation_monitor': 'val_mean_squared_error',
-                'lstm_hidden_size': lstm_hidden_size
+                'lstm_hidden_size': lstm_hidden_size,
+                'learning_rate': learning_rate
             },
             'prepare': {
                 'cache_dir': f'{cache_dir}/{format_build_date(download_end_dt_str)}/',
@@ -230,6 +249,7 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
         - model:
             - max_samples: {cfg.model.max_samples}
             - batch_size: {cfg.model.batch_size}
+            - learning_rate: {cfg.model.learning_rate}
             - lstm_hidden_size: {cfg.model.lstm_hidden_size}
             - early_stopping_patience: {cfg.model.early_stopping_patience}
             - validation_monitor: {cfg.model.validation_monitor}

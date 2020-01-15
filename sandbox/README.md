@@ -38,21 +38,21 @@ sudo apt-get install libblas3 liblapack3 liblapack-dev libblas-dev gfortran
 sudo apt-get install libatlas-base-dev python-dev gfortran pkg-config libfreetype6-dev
 sudo pip install --upgrade pip
 sudo pip install --upgrade setuptools
-sudo pip install cython
-sudo pip install python-dotenv pandas numpy numba scipy scikit-learn cachetools psutil pyyaml requests python-dateutil statsmodels urllib3 beautifulsoup4 pandas-datareader xlrd python-dotenv munch openpyxl==3.0.1
-sudo pip install ray
-sudo pip install xgboost
-sudo pip install tensorflow
-sudo pip install findspark  fastparquet brotli pyarrow thrift
-sudo pip install jupyter jupyterlab importlib seaborn matplotlib jupyter_server_proxy jupyterlab-dash
-sudo pip install qgrid
-sudo pip install quandl
-sudo pip install html5lib
-sudo pip install bs4
-sudo pip install yfinance
-sudo pip install investpy
-sudo pip install requests_cache
-sudo pip install mpl_finance
+sudo pip install -U cython
+sudo pip install -U python-dotenv pandas numpy numba scipy scikit-learn cachetools psutil pyyaml requests python-dateutil statsmodels urllib3 beautifulsoup4 pandas-datareader xlrd python-dotenv munch openpyxl==3.0.1
+sudo pip install -U ray
+sudo pip install -U xgboost
+sudo pip install -U tensorflow
+sudo pip install -U findspark  fastparquet brotli pyarrow thrift
+sudo pip install -U jupyter jupyterlab importlib seaborn matplotlib jupyter_server_proxy jupyterlab-dash
+sudo pip install -U qgrid
+sudo pip install -U quandl
+sudo pip install -U html5lib
+sudo pip install -U bs4
+sudo pip install -U yfinance
+sudo pip install -U investpy
+sudo pip install -U requests_cache
+sudo pip install -U mpl_finance
 sudo pip install -U --user PyYAML
 sudo jupyter labextension install jupyterlab-dash
 sudo jupyter labextension install jupyter_server_proxy
@@ -60,11 +60,11 @@ sudo jupyter labextension install @jupyter-widgets/jupyterlab-manager
 sudo jupyter serverextension enable --py jupyterlab --sys-prefix
 sudo jupyter serverextension enable --py jupyter_server_proxy --sys-prefix
 sudo jupyter labextension install qgrid
-sudo pip install cufflinks dash dash-renderer dash-html-components dash-core-components plotly chart-studio dash-daq dash-cytoscape gunicorn dash-bootstrap-components plotly-express
-sudo pip install joblib deap update_checker tqdm stopit dask[delayed] dask-ml scikit-mdr skrebate tpot
-sudo pip install blaze sqlalchemy
-sudo pip install alphalens pyfolio
-sudo pip install holidays
+sudo pip install -U cufflinks dash dash-renderer dash-html-components dash-core-components plotly chart-studio dash-daq dash-cytoscape gunicorn dash-bootstrap-components plotly-express
+sudo pip install -U joblib deap update_checker tqdm stopit dask[delayed] dask-ml scikit-mdr skrebate tpot
+sudo pip install -U blaze sqlalchemy
+sudo pip install -U alphalens pyfolio
+sudo pip install -U holidays
 # deprecated
 # sudo pip install empyrical
 # requires python 3.5
