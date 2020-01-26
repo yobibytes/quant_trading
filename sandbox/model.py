@@ -56,11 +56,11 @@ def load_weights(cfg, submodel_settings, mdl, ticker_name='', train_mode=True):
     # try to load current ticker weights
     if load_model_weights(cfg, mdl, pth_submodel, ticker_name, train_mode=train_mode) is None:
         # try to load template + ticker_name
-        if (not ticker_name) or load_model_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir), ticker_name, train_mode=train_mode) is None:
+        if (not ticker_name) or load_model_weights(cfg, mdl, pathlib.Path(f"{cfg.model.model_templates_dir}/{submodel_settings.id}"), ticker_name, train_mode=train_mode) is None:
             # try to load current overall weights
             if (not ticker_name) or load_model_weights(cfg, mdl, pth_submodel, train_mode=train_mode) is None:
                 # try to load template overall weights
-                if load_model_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir), train_mode=train_mode) is None:
+                if load_model_weights(cfg, mdl, pathlib.Path(f"{cfg.model.model_templates_dir}/{submodel_settings.id}"), train_mode=train_mode) is None:
                     model_weights_loaded = 'tpl-overall'
             else:
                 model_weights_loaded = 'overall'
@@ -76,15 +76,15 @@ def load_weights(cfg, submodel_settings, mdl, ticker_name='', train_mode=True):
         if ticker_name and model_weights_loaded != 'ticker':
             raise BaseException(f"model> model ticker weights doesn't exists in '{pth_submodel}'!")
         elif not ticker_name and model_weights_loaded != 'overall':
-            raise BaseException(f"model> model overall weights doesn't exists in '{cfg.model.model_templates_dir}'!")
+            raise BaseException(f"model> model overall weights doesn't exists in '{cfg.model.model_templates_dir}/{submodel_settings.id}'!")
     # try to load current ticker weights
     if load_optimizer_weights(cfg, mdl, pth_submodel, ticker_name, train_mode=train_mode) is None:
         # try to load template + ticker_name
-        if (not ticker_name) or load_optimizer_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir), ticker_name, train_mode=train_mode) is None:
+        if (not ticker_name) or load_optimizer_weights(cfg, mdl, pathlib.Path(f"{cfg.model.model_templates_dir}/{submodel_settings.id}"), ticker_name, train_mode=train_mode) is None:
             # try to load current overall weights
             if (not ticker_name) or load_optimizer_weights(cfg, mdl, pth_submodel, train_mode=train_mode) is None:
                 # try to load template overall weights
-                load_optimizer_weights(cfg, mdl, pathlib.Path(cfg.model.model_templates_dir), train_mode=train_mode)
+                load_optimizer_weights(cfg, mdl, pathlib.Path(f"{cfg.model.model_templates_dir}/{submodel_settings.id}"), train_mode=train_mode)
 
 def save_weights(cfg, submodel_settings, mdl, ticker_name=''):
     print(f"model> trying to save weights ...") 
@@ -98,7 +98,7 @@ def save_weights(cfg, submodel_settings, mdl, ticker_name=''):
         pickle.dump(K.batch_get_value(getattr(mdl.optimizer, 'weights')), f)
         print(f"model> saved optimizer weights to '{f_optimizer_weights.resolve()}'")
 
-def create_model(cfg, submodel_settings, mdl_data, ticker_name='', train_mode=True, learning_rate=0.001):
+def create_model(cfg, submodel_settings, mdl_data, ticker_name='', train_mode=True, learning_rate=0.002):
     # print(f'model> clear backend session')
     K.clear_session()    
     num_samples = mdl_data.shape[0]
@@ -114,7 +114,8 @@ def create_model(cfg, submodel_settings, mdl_data, ticker_name='', train_mode=Tr
     mdl.add(LSTM(lstm_dim, dropout=.2, recurrent_dropout=.2, return_sequences=True, activation="softsign"))
     mdl.add(LSTM(lstm_dim, dropout=.2, recurrent_dropout=.2, activation="softsign"))
     mdl.add(Dense(output_dim))
-    optimizer = optimizers.Adam(learning_rate=learning_rate)
+    
+    optimizer = optimizers.Nadam(learning_rate=learning_rate, beta_1=0.9, beta_2=0.999)
     mdl.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mean_absolute_error', 'mean_squared_error'])
     if train_mode:
         print(f'model> model created\n:{mdl.summary()}')

@@ -20,13 +20,13 @@ yf.pdr_override()
 
 from shared import *
 
-def load_stocks(cfg):
-    return _load_tickers(cfg, 'stocks')
+def load_stocks(cfg, interval='1d', compact=False):
+    return _load_tickers(cfg, 'stocks', interval, compact)
 
-def load_benchmarks(cfg, interval='1d'):
-    return _load_tickers(cfg, 'benchmarks')
+def load_benchmarks(cfg, interval='1d', compact=False):
+    return _load_tickers(cfg, 'benchmarks', interval, compact)
 
-def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10):
+def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10, compact=False):
     '''
     - period: data period to download (Either Use period parameter or use start and end) Valid periods are: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
     - interval: data interval (intraday data cannot extend last 60 days) Valid intervals are: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
@@ -36,6 +36,10 @@ def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10):
     - auto_adjust: Adjust all OHLC automatically? (Default is False)
     - actions: Download stock dividends and stock splits events? (Default is True)    
     '''
+    if compact:
+        # history not required in prediction model
+        print(f"tickers-{ticker_cfg.name}> downloading histories skipped")
+        return None
     retried = 0
     # period = 'max'
     period = '10y'
@@ -75,7 +79,7 @@ def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10):
                 pass
 
             
-def _data_ticker(cfg, ticker_cfg, t, interval='1d', retries=10):
+def _data_ticker(cfg, ticker_cfg, t, interval='1d', retries=10, compact=False):
     retried = 0
     period = 'max'
     print(f"ticker-{t}> loading ticker data ...")
@@ -87,8 +91,13 @@ def _data_ticker(cfg, ticker_cfg, t, interval='1d', retries=10):
                 print(f'WARN: ticker-{t}> #missing: {df.isnull().values.sum()}')
                 # raise Exception(f"Missing values found! (#missing: {df.isnull().values.sum()})")
             ticker._history = df
+            if compact:
+                print(f"ticker-{t}> skipped downloading ticker facts")
+                return {
+                    'history': df
+                }
             options = ticker.option_chain()         
-            result = {
+            return {
                 'calendar': to_snake_cases(ticker.get_calendar().T.set_index('Earnings Date')) if ticker.get_calendar() is not None else None,
                 'recommendations': to_snake_cases(ticker.get_recommendations()) if ticker.get_recommendations() is not None else None,
                 'info': ticker.get_info(),
@@ -102,8 +111,7 @@ def _data_ticker(cfg, ticker_cfg, t, interval='1d', retries=10):
                 'history': df,
                 'calls': to_snake_cases(options.calls.set_index('lastTradeDate') if options.calls is not None else None),
                 'puts': to_snake_cases(options.puts.set_index('lastTradeDate') if options.puts is not None else None),
-            }            
-            return result
+            }
         except Exception as e:
             retried += 1
             if retried > retries:
@@ -117,10 +125,10 @@ def _data_ticker(cfg, ticker_cfg, t, interval='1d', retries=10):
                 print(f"WARN: ticker-{t}> retrying loading ticker data ... (#{retried} of {retries})")
                 pass
 
-def _data_tickers(cfg, ticker_cfg, interval='1d'):
+def _data_tickers(cfg, ticker_cfg, interval='1d', compact=False):
     result = {}
     for t in ticker_cfg.tickers:
-        dfs = _data_ticker(cfg, ticker_cfg, t, interval)
+        dfs = _data_ticker(cfg, ticker_cfg, t, interval, compact)
         data = {}
         for k in sorted(list(dfs.keys())):
             df = dfs[k]
@@ -144,7 +152,7 @@ def _prepare(df):
         df.drop(columns=['date'], inplace=True)
     return df
 
-def _load_tickers(cfg, key, interval='1d'):
+def _load_tickers(cfg, key, interval='1d', compact=False):
     ticker_cfg = munch.munchify({
         'stocks': {
             'name': 'stocks',
@@ -164,8 +172,8 @@ def _load_tickers(cfg, key, interval='1d'):
     if data is None or ticker_cfg is None:
         meta = ticker_cfg
         data = munch.munchify({
-            'downloads': _download_tickers(cfg, meta, interval),
-            'tickers': _data_tickers(cfg, meta, interval),
+            'downloads': _download_tickers(cfg, meta, interval, compact),
+            'tickers': _data_tickers(cfg, meta, interval, compact)
         })
         save_tickers(cfg, meta, data, interval)
     return meta, data
