@@ -98,12 +98,17 @@ def save_weights(cfg, submodel_settings, mdl, ticker_name=''):
         pickle.dump(K.batch_get_value(getattr(mdl.optimizer, 'weights')), f)
         print(f"model> saved optimizer weights to '{f_optimizer_weights.resolve()}'")
 
-def create_model(cfg, submodel_settings, mdl_data, ticker_name='', train_mode=True, learning_rate=0.002):
+def create_model(cfg, submodel_settings, mdl_data=None, ticker_name='', train_mode=True, learning_rate=0.002, input_shape=None):
     # print(f'model> clear backend session')
-    K.clear_session()    
-    num_samples = mdl_data.shape[0]
-    num_features = len(mdl_data.X.head(1).tolist()[0][0][0][0])
-    input_length = submodel_settings.lookback_days
+    K.clear_session()
+    if mdl_data is None:
+        num_samples = input_shape[0]
+        num_features = input_shape[-1]
+        input_length = submodel_settings.lookback_days
+    else:
+        num_samples = mdl_data.shape[0]
+        num_features = len(mdl_data.X.head(1).tolist()[0][0][0][0])
+        input_length = submodel_settings.lookback_days
     input_dim = num_features
     lstm_dim = cfg.model.lstm_hidden_size
     output_dim = 1

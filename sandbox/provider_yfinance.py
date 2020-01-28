@@ -12,7 +12,7 @@ import pandas as pd
 from numba import jit
 from dateutil.relativedelta import relativedelta
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
-
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 from importlib import reload
 import yfinance_v2 as yf
 reload(yf)
@@ -467,69 +467,83 @@ def generate_samples_iterator(cfg, submodel_settings, ticker_data, is_stock=Fals
 
 def generate_relative_benchmarks_data(cfg, submodel_settings, benchmarks_data):
     print(f"sm-{submodel_settings.id}> generating relative benchmarks data ...")
-    rel_benchmarks_data = {}
+    result = {}
     samples_iter = generate_samples_iterator(cfg, submodel_settings, next(iter(benchmarks_data.values())), False)
+    for si in samples_iter:
+        result[si.lookback_end_date] = generate_relative_benchmark_data(cfg, submodel_settings, benchmarks_data, si.lookback_start_date, si.lookback_end_date)
+    return result
+
+def generate_relative_benchmark_data(cfg, submodel_settings, benchmarks_data, lookback_start_date, lookback_end_date):
     # default: convert values to percent
     float_precision = submodel_settings.float_precision
-    for si in samples_iter:
-        bm_X = None
-        for bm_name in benchmarks_data.keys():
-            bm_data = benchmarks_data[bm_name]
-            bm_lookback_data = bm_data.iloc[(bm_data.index >= si.lookback_start_date) & (bm_data.index <= si.lookback_end_date)]
-            bm_base_price = bm_data.loc[si.lookback_end_date].close
-            bm_x = bm_lookback_data.copy()
-            bm_relative_cols = [f for f in (set(bm_lookback_data.columns) - set(['volume'])) if not (f.startswith('lag_') or f.startswith('scaled_') or f.startswith('onehot_'))]
-            bm_diff_cols = [f for f in bm_relative_cols if not f.startswith('diff_')]
-            bm_other_numerical_cols = [f for f in bm_lookback_data.columns if f.startswith('lag_') or f.startswith('scaled_')]
-            bm_x[bm_other_numerical_cols] *= float_precision
-            bm_x[bm_relative_cols] /= bm_base_price / float_precision
-            bm_x[bm_diff_cols] -= float_precision
-            bm_prefix = f'{to_snake_case(bm_name)}_'
-            bm_x.rename(columns=dict([(c, f'{bm_prefix}{c}') for c in bm_x.columns]), inplace=True)
-            if bm_X is None:
-                bm_X = bm_x
-            else:
-                bm_X = pd.merge(bm_X, bm_x, how='left', left_index=True, right_index=True)        
-        rel_benchmarks_data[si.lookback_end_date] = bm_X
-    return rel_benchmarks_data
+    bm_X = None
+    for bm_name in benchmarks_data.keys():
+        bm_data = benchmarks_data[bm_name]
+        bm_lookback_data = bm_data.iloc[(bm_data.index >= lookback_start_date) & (bm_data.index <= lookback_end_date)]
+        bm_base_price = bm_data.loc[lookback_end_date].close
+        bm_x = bm_lookback_data.copy()
+        bm_relative_cols = [f for f in (set(bm_lookback_data.columns) - set(['volume'])) if not (f.startswith('lag_') or f.startswith('scaled_') or f.startswith('onehot_'))]
+        bm_diff_cols = [f for f in bm_relative_cols if not f.startswith('diff_')]
+        bm_other_numerical_cols = [f for f in bm_lookback_data.columns if f.startswith('lag_') or f.startswith('scaled_')]
+        bm_x[bm_other_numerical_cols] *= float_precision
+        bm_x[bm_relative_cols] /= bm_base_price / float_precision
+        bm_x[bm_diff_cols] -= float_precision
+        bm_prefix = f'{to_snake_case(bm_name)}_'
+        bm_x.rename(columns=dict([(c, f'{bm_prefix}{c}') for c in bm_x.columns]), inplace=True)
+        if bm_X is None:
+            bm_X = bm_x
+        else:
+            bm_X = pd.merge(bm_X, bm_x, how='left', left_index=True, right_index=True)
+    return bm_X
 
-def generate_samples(cfg, submodel_settings, ticker_data, rel_benchmarks_data):    
-    from keras.preprocessing.sequence import pad_sequences
+def generate_sample_y(cfg, submodel_settings, ticker_data, lookback_end_date, label_start_date, label_end_date):
+    float_precision = submodel_settings.float_precision
+    # base_price = price(lookback_end_date)
+    base_price = ticker_data.loc[lookback_end_date].close
+    label_data = ticker_data.iloc[(ticker_data.index >= label_start_date) & (ticker_data.index <= label_end_date)]    
+    # calculate relative y value = approx profit/loss in percent
+    y = ((label_data.high.max() * cfg.train.label_max_high_weight) + (label_data.close.max() * cfg.train.label_max_close_weight)) / (cfg.train.label_max_close_weight + cfg.train.label_max_high_weight)
+    y = (y - base_price) / base_price * float_precision
+    return y
+
+def generate_sample_x(cfg, submodel_settings, ticker_data, bm_X, lookback_start_date, lookback_end_date):
+    float_precision = submodel_settings.float_precision
+    # base_price = price(lookback_end_date)
+    base_price = ticker_data.loc[lookback_end_date].close
+    lookback_data = ticker_data.iloc[(ticker_data.index >= lookback_start_date) & (ticker_data.index <= lookback_end_date)]
+    # generate relative x data
+    x = lookback_data.copy()
+    relative_cols = [f for f in (set(lookback_data.columns) - set(['stock_splits','break_days', 'volume'])) if not (f.startswith('lag_') or f.startswith('scaled_') or f.startswith('onehot_'))]
+    diff_cols = [f for f in (set(relative_cols) - set(['dividends'])) if not f.startswith('diff_')]
+    other_numerical_cols = [f for f in lookback_data.columns if f.startswith('lag_') or f.startswith('scaled_')]
+    x[other_numerical_cols] *= float_precision    
+    x[relative_cols] /= base_price / float_precision
+    x[diff_cols] -= float_precision
+    # enrich x with relative benchmark columns
+    x = pd.merge(x, bm_X, how='left', left_index=True, right_index=True)        
+    x.fillna(0, inplace=True)
+    seq = x.apply(tuple, axis=1).apply(list)
+    # assert len(seq) == submodel_settings.lookback_days, f'len(seq)={len(seq)} must equal lookback_days={submodel_settings.lookback_days}'
+    seq = pad_sequences([seq.tolist()], submodel_settings.lookback_days, dtype='float32')
+    return seq
+
+def generate_samples(cfg, submodel_settings, ticker_data, rel_benchmarks_data):        
     train_dates = []
     X = []
     Y = []
     samples_iter = generate_samples_iterator(cfg, submodel_settings, ticker_data)
     float_precision = submodel_settings.float_precision
     for idx, si in enumerate(samples_iter):
-        # base_price = price(lookback_end_date)
-        base_price = ticker_data.loc[si.lookback_end_date].close
-        label_data = ticker_data.iloc[(ticker_data.index >= si.label_start_date) & (ticker_data.index <= si.label_end_date)]    
-        lookback_data = ticker_data.iloc[(ticker_data.index >= si.lookback_start_date) & (ticker_data.index <= si.lookback_end_date)]
-        # calculate relative y value = approx profit/loss in percent
-        y = ((label_data.high.max() * cfg.train.label_max_high_weight) + (label_data.close.max() * cfg.train.label_max_close_weight)) / (cfg.train.label_max_close_weight + cfg.train.label_max_high_weight)
-        y = (y - base_price) / base_price * float_precision
-        # generate relative x data
-        x = lookback_data.copy()
-        relative_cols = [f for f in (set(lookback_data.columns) - set(['stock_splits','break_days', 'volume'])) if not (f.startswith('lag_') or f.startswith('scaled_') or f.startswith('onehot_'))]
-        diff_cols = [f for f in (set(relative_cols) - set(['dividends'])) if not f.startswith('diff_')]
-        other_numerical_cols = [f for f in lookback_data.columns if f.startswith('lag_') or f.startswith('scaled_')]
-        x[other_numerical_cols] *= float_precision    
-        x[relative_cols] /= base_price / float_precision
-        x[diff_cols] -= float_precision
-        # enrich x with relative benchmark columns
-        if si.lookback_end_date in rel_benchmarks_data:
-            bm_x = rel_benchmarks_data[si.lookback_end_date]        
-            x = pd.merge(x, bm_x, how='left', left_index=True, right_index=True)        
-            x.fillna(0, inplace=True)
-            seq = x.apply(tuple, axis=1).apply(list)
-            # assert len(seq) == submodel_settings.lookback_days, f'len(seq)={len(seq)} must equal lookback_days={submodel_settings.lookback_days}'
-            seq = pad_sequences([seq.tolist()], submodel_settings.lookback_days, dtype='float32')
-            seq = pd.Series(seq.tolist()).apply(np.asarray)
-            for manifold in range(submodel_settings.sample_manifolds[idx + (len(submodel_settings.sample_manifolds) - len(samples_iter))]):
-                train_dates.append(si.lookback_end_date)
-                X.append(seq)
-                Y.append(y)
+        if lookback_end_date in rel_benchmarks_data:
+            bm_X = rel_benchmarks_data[si.lookback_end_date]
         else:
             # missing stock data (no matching benchmarks found)
-            continue
+            continue            
+        y = generate_sample_y(cfg, submodel_settings, ticker_data, si.lookback_end_date, si.label_start_date, si.label_end_date)
+        x = generate_sample_x(cfg, submodel_settings, ticker_data, bm_X, si.lookback_start_date, si.lookback_end_date)
+        seq = pd.Series(x.tolist()).apply(np.asarray)
+        for manifold in range(submodel_settings.sample_manifolds[idx + (len(submodel_settings.sample_manifolds) - len(samples_iter))]):
+            train_dates.append(si.lookback_end_date)
+            X.append(seq)
+            Y.append(y)
     return (train_dates, X, Y)
