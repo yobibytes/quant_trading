@@ -23,8 +23,37 @@ from shared import *
 def load_stocks(cfg, interval='1d', compact=False):
     return _load_tickers(cfg, 'stocks', interval, compact)
 
+def load_stocks_history(cfg, interval='1d', compact=False):
+    result = {}
+    _, data_stocks = _load_tickers(cfg, 'stocks', interval, compact)
+    for k in data_stocks.tickers.keys():
+        result[k] = data_stocks.tickers[k].history
+    return result
+
+def load_stocks_close(cfg, close_dt=None, interval='1d', compact=False):
+    result = {}
+    data_stocks = load_stocks_history(cfg, interval, compact)
+    
+    close_idx = None
+    for k in data_stocks.keys():
+        if close_dt is None:
+            result[k] = data_stocks[k].iloc[-1].close
+        else:
+            if close_idx==None:
+                df = data_stocks[k]
+                close_idx = df[df.index <= close_dt].index[-1]
+            result[k] = data_stocks[k].loc[close_idx].close
+    return result
+
 def load_benchmarks(cfg, interval='1d', compact=False):
     return _load_tickers(cfg, 'benchmarks', interval, compact)
+
+def load_benchmarks_history(cfg, interval='1d', compact=False):
+    result = {}
+    _, data_benchmarks = _load_tickers(cfg, 'benchmarks', interval, compact)
+    for k in data_benchmarks.tickers.keys():
+        result[k] = data_benchmarks.tickers[k].history[['open','high','low','close','volume']]
+    return result
 
 def _download_tickers(cfg, ticker_cfg, interval='1d', retries=10, compact=False):
     '''
@@ -320,10 +349,12 @@ def get_stocks_index(prep_stocks):
     stocks_index.index.name = 'date'
     return stocks_index
 
-def encode_stocks(cfg, prep_stocks, overwrite=False):
+def encode_stocks(cfg, prep_stocks=None, overwrite=False):
     pkl_file = f'{cfg.prepare.cache_dir}/stocks_enc.pkl'
     enc_stocks = load_pickle(pkl_file)
     if overwrite or enc_stocks is None:
+        if prep_stocks is None:
+            raise Exception("Missing data: prep_stocks!")
         enc_stocks = munch.Munch()
         for ticker_name in prep_stocks.keys():
             ticker_data = prep_stocks[ticker_name]
@@ -344,10 +375,12 @@ def encode_stocks(cfg, prep_stocks, overwrite=False):
         save_pickle(pkl_file, enc_stocks)
     return enc_stocks
 
-def encode_benchmarks(cfg, prep_benchmarks, prep_stocks, overwrite=False):
+def encode_benchmarks(cfg, prep_benchmarks=None, prep_stocks=None, overwrite=False):
     pkl_file = f'{cfg.prepare.cache_dir}/benchmarks_enc.pkl'
     enc_benchmarks = load_pickle(pkl_file)
     if overwrite or enc_benchmarks is None:
+        if prep_stocks is None or prep_benchmarks is None:
+            raise Exception("Missing data: prep_stocks or prep_benchmarks!")
         stocks_index = get_stocks_index(prep_stocks)
         enc_benchmarks = munch.Munch()
         for bm_name in prep_benchmarks.keys():

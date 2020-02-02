@@ -16,6 +16,7 @@ from tensorflow.keras import optimizers
 import tensorflow.keras.backend as K
 
 from shared import *
+import config
 import provider_yfinance as provider
 
 def load_model_weights(cfg, mdl, pth_model_weights, ticker_name='', train_mode=True):
@@ -177,3 +178,170 @@ def train_full(cfg, start_settings_idx=0):
             history = train_model(cfg, submodel_settings, mdl, ticker_data, ticker_name)
             print(f"sm-{submodel_settings.id}> {ticker_name}-{monitor} (best epoch): {history.history[monitor][np.max(history.epoch)-patience]}")
             print(f"sm-{submodel_settings.id}> {ticker_name}-{monitor} (+-5 around best epoch): {np.mean(history.history[monitor][(np.max(history.epoch)-patience-5):(np.max(history.epoch)-patience+5)])}")        
+
+            
+def validate_model(cfg, validate_dt):
+    # select model to validate against 
+    mdl_cfg = cfg.copy()
+    config.overwrite_end_dt(mdl_cfg, validate_dt)    
+    eval_result = {}
+    verbose=0
+    for submodel_settings in cfg.train.settings:
+        print(f'============\n {submodel_settings.id}\n ============')
+        rs = {}
+        mdl_data = provider.prepare_submodel_data(cfg, submodel_settings)
+        tickers = mdl_data.ticker.unique().tolist()
+        for ticker_name in tickers:        
+            ticker_data = mdl_data[(mdl_data.ticker==ticker_name) & (mdl_data.date==mdl_cfg.train.end_dt)]
+            base_date = str(ticker_data.date[-1:].tolist()[0].date())
+            print(f'eval> {submodel_settings.id} - {ticker_name} - {base_date} ...')
+            mdl = create_model(mdl_cfg, submodel_settings, ticker_data, ticker_name, train_mode=False)
+            mdl0 = create_model(mdl_cfg, submodel_settings, ticker_data, train_mode=False)
+            num_samples = ticker_data.shape[0]    
+            num_features = len(ticker_data.X.head(1).tolist()[0][0][0][0])
+            input_dim = num_features    
+            input_length = submodel_settings.lookback_days
+            output_dim = 1
+            X = np.hstack(np.asarray(ticker_data.X)).reshape(num_samples, input_length, input_dim)[-1:]
+            y = np.hstack(np.asarray(ticker_data.y)).reshape(num_samples, output_dim)[-1:]
+            X0 = np.hstack(np.asarray(ticker_data.X)).reshape(num_samples, input_length, input_dim)[-1:]
+            y0 = np.hstack(np.asarray(ticker_data.y)).reshape(num_samples, output_dim)[-1:]
+            mdl_metrics = dict(zip(mdl.metrics_names, mdl.evaluate(X, y, verbose=verbose)))
+            mdl0_metrics = dict(zip(mdl.metrics_names, mdl0.evaluate(X0, y0, verbose=verbose)))
+            rs[ticker_name] = {
+                'date': [base_date],
+                'metrics': [
+                    mdl_metrics['loss'], mdl_metrics['mean_absolute_error'], mdl_metrics['mean_squared_error'],
+                    mdl0_metrics['loss'], mdl0_metrics['mean_absolute_error'], mdl0_metrics['mean_squared_error'],
+                ],
+                'y': [round(mdl.predict(X)[0][0]*100)/100, round(y[0][0]*100)/100]
+            }
+        eval_result[submodel_settings.id] = rs
+
+    csv_output_stocks = []
+    rs = ['ticker_name']
+    for submodel_settings in cfg.train.settings:
+        prefix = submodel_settings.id + '_'
+        rs += [
+            'date', 'y_predicted', 'y_actual', prefix + 'mdl_loss', prefix + 'mdl_mae', prefix + 'mdl_mse', prefix + 'mdl0_loss', prefix + 'mdl0_mae', prefix + 'mdl0_mse'
+        ]
+    csv_output_stocks.append(rs)
+    for ticker_name in cfg.datasets.raw.stocks:
+        rs = [ticker_name]
+        for submodel_settings in cfg.train.settings:
+            if ticker_name in eval_result[submodel_settings.id]:
+                ticker_result = eval_result[submodel_settings.id][ticker_name]
+                rs += ticker_result['date']
+                rs += ticker_result['y']
+                rs += ticker_result['metrics']
+            else:
+                rs += [None] * 9
+        csv_output_stocks.append(rs)  
+
+    with open(os.path.join(cfg.model.base_dir, 'model_eval_pivot.tsv'), 'w', newline='\n', encoding='utf-8') as fp:
+        writer = csv.writer(fp, delimiter='\t')
+        for rs in csv_output_stocks:
+            writer.writerow(rs)
+
+    csv_output = [
+        ['ticker_name', 'submodel', 'date', 'y_predicted', 'y_actual', 'mdl_loss', 'mdl_mae', 'mdl_mse', 'mdl0_loss', 'mdl0_mae', 'mdl0_mse']
+    ]
+    for ticker_name in cfg.datasets.raw.stocks:    
+        for submodel_settings in cfg.train.settings:
+            rs = [ticker_name, submodel_settings.id]
+            if ticker_name in eval_result[submodel_settings.id]:
+                ticker_result = eval_result[submodel_settings.id][ticker_name]
+                rs += ticker_result['date']
+                rs += ticker_result['y']
+                rs += ticker_result['metrics']
+            else:
+                rs += [None] * 9
+            csv_output.append(rs)
+
+    with open(os.path.join(cfg.model.base_dir, 'model_eval.tsv'), 'w', newline='\n', encoding='utf-8') as fp:
+        writer = csv.writer(fp, delimiter='\t')
+        for rs in csv_output:
+            writer.writerow(rs)
+
+    return eval_result
+
+
+def rank_model_by_weighted_score(cfg):
+    # rank models by performance
+    df_eval = pd.read_csv(os.path.join(cfg.model.base_dir, 'model_eval.tsv'), sep='\t', low_memory=False)
+    # ticker model scores
+    scores = [10,8,5,3,2,1]
+    s_scores = None
+    for ticker_name in cfg.datasets.raw.stocks:        
+        idx = df_eval[df_eval.ticker_name==ticker_name].sort_values(by='mdl_mae').index    
+        scores = scores + [0] * (len(cfg.train.settings) - len(scores))
+        if s_scores is None:
+            s_scores = pd.Series(scores, index=idx)
+        else:
+            s_scores = pd.concat([s_scores, pd.Series(scores, index=idx)])
+    df_eval['scores'] = s_scores
+    # overall model scores
+    scores0 = np.array(scores) / 2
+    s_scores0 = None
+    for ticker_name in cfg.datasets.raw.stocks:        
+        idx = df_eval[df_eval.ticker_name==ticker_name].sort_values(by='mdl0_mae').index    
+        scores = scores + [0] * (len(cfg.train.settings) - len(scores))
+        if s_scores0 is None:
+            s_scores0 = pd.Series(scores, index=idx)
+        else:
+            s_scores0 = pd.concat([s_scores0, pd.Series(scores, index=idx)])
+    df_eval['scores0'] = s_scores0
+    df_eval['scores_sum'] = df_eval.scores + df_eval.scores0
+    df_eval['ensemble_weight'] = df_eval.submodel.apply(lambda x: [s for s in cfg.train.settings if x==s.id][0].ensemble_weight)
+    df_eval['scores_weighted'] = df_eval.scores_sum * df_eval.ensemble_weight
+    df_rank = df_eval.groupby(['submodel']).agg(sum).sort_values('scores_weighted', ascending=False)[['scores_weighted']]
+    return df_rank, df_eval
+
+def predict(cfg, predict_dt=None):
+    if predict_dt is None:
+        mdl_cfg = cfg.copy()
+    else:
+        mdl_cfg = cfg.copy()
+        config.overwrite_end_dt(mdl_cfg, validate_dt)
+    if predict_dt is None:
+        end_dt = parse_datetime(cfg.prepare.download_end_dt)
+    else:
+        end_dt = parse_datetime(predict_dt)
+    enc_stocks = provider.encode_stocks(cfg)
+    enc_benchmarks = provider.encode_benchmarks(cfg)
+    data_stocks_close = provider.load_stocks_close(cfg, end_dt)
+    predict_result = {}
+    verbose=0
+    for submodel_settings in cfg.train.settings:
+        print(f'============\n {submodel_settings.id}\n ============')
+        rs = {}
+        mdl_data = provider.prepare_submodel_data(cfg, submodel_settings)
+        tickers = mdl_data.ticker.unique().tolist()
+        for ticker_name in tickers:
+            ticker_data = enc_stocks[ticker_name]
+            ticker_dates = ticker_data.iloc[ticker_data.index <= end_dt].index
+            lookback_end_date = ticker_dates[-1]
+            lookback_start_date = ticker_dates[-(1 + submodel_settings.lookback_days)]
+            back_data = ticker_data.iloc[(ticker_data.index >= lookback_start_date) & (ticker_data.index <= lookback_end_date)]
+            # print(f"{submodel_settings.id}> {ticker_name}: prediction lookback from '{lookback_start_date}' to '{lookback_end_date}' for the next {submodel_settings.label_days} days")
+            bm_X = provider.generate_relative_benchmark_data(cfg, submodel_settings, enc_benchmarks, lookback_start_date, lookback_end_date)
+            # print(f"{submodel_settings.id}> benchmark data shape: {bm_X.shape}")
+            X = provider.generate_sample_x(cfg, submodel_settings, ticker_data, bm_X, lookback_start_date, lookback_end_date)
+            # print(f"{submodel_settings.id}> X shape: {X.shape}")
+            mdl = create_model(cfg, submodel_settings, ticker_name=ticker_name, train_mode=False, input_shape=X.shape)
+            prediction = mdl.predict(X)[0][0]
+            mdl0 = create_model(cfg, submodel_settings, train_mode=False, input_shape=X.shape)
+            prediction0 = mdl0.predict(X)[0][0]
+            close_base = data_stocks_close[ticker_name]
+            close = close_base * (1.+prediction/100.)
+            close0 = close_base * (1.+prediction0/100.)
+            print(f"{submodel_settings.id}> {ticker_name}: stock model: {close:.2f}€ ({prediction:.2f}%), index model: {close0:.2f}€ ({prediction0:.2f}%), p0={close_base:.2f}€")
+            rs[ticker_name] = [
+                submodel_settings.label_days, 
+                close_base, 
+                close, 
+                prediction, 
+                close0, 
+                prediction0
+            ]
+        predict_result[submodel_settings.id] = rs
