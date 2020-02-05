@@ -2,7 +2,9 @@
 
 ```cmd (with admin rights)
 wsl
-cd /mnt/c/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
+sudo mkdir -p /mnt/d
+sudo mount -t drvfs d: /mnt/d
+cd /mnt/d/notebooks && jupyter lab --allow-root --ip=0.0.0.0 --no-browser
 ```
 
 ```

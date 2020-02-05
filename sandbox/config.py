@@ -94,7 +94,11 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
 
         cache_dir = mkdirs(os.environ.get('CACHE_DIR', './cache/'))
         model_dir = mkdirs(os.environ.get('MODEL_DIR', './model/'))
-        model_templates_dir = mkdirs(os.path.join(os.environ.get('MODEL_DIR', './model/templates/'), 'base'))
+        base_dir = get_file_content(os.path.join(model_dir, '.base'))
+        if base_dir is None:
+            model_templates_dir = get_latest_subdir(model_dir)
+        else:
+            model_templates_dir = mkdirs(os.path.join(model_dir, base_dir))
 
         # feature configurations
         window_trading_days = [int(s.strip()) for s in os.environ['TRAIN_WINDOW_TRADING_DAYS'].strip().split(',')]
@@ -257,7 +261,8 @@ def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
             - early_stopping_patience: {cfg.model.early_stopping_patience}
             - validation_monitor: {cfg.model.validation_monitor}
             - max_epochs: {cfg.model.max_epochs}
-            - base_dir: {cfg.model.base_dir}            
+            - base_dir: {cfg.model.base_dir}
+            - model_templates_dir: {cfg.model.model_templates_dir}
         ''')
     return cfg
 

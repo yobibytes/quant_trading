@@ -1,10 +1,10 @@
 {
     "base": {
-        "cache_dir": "/mnt/c/notebooks/sandbox/cache",
+        "cache_dir": "/mnt/d/notebooks/sandbox/cache",
         "cache_enabled": false,
-        "config_file_path": "/mnt/c/notebooks/sandbox/config.json",
-        "current_dir": "/mnt/c/notebooks/sandbox",
-        "model_dir": "/mnt/c/notebooks/sandbox/model"
+        "config_file_path": "/mnt/d/notebooks/sandbox/config.json",
+        "current_dir": "/mnt/d/notebooks/sandbox",
+        "model_dir": "/mnt/d/notebooks/sandbox/model"
     },
     "datasets": {
         "raw": {
@@ -114,7 +114,7 @@
         }
     },
     "model": {
-        "base_dir": "/mnt/c/notebooks/sandbox/model/20200126/",
+        "base_dir": "/mnt/d/notebooks/sandbox/model/20200203/",
         "batch_size": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.1,
@@ -122,20 +122,20 @@
         "lstm_hidden_size": 256,
         "max_epochs": 1000,
         "max_samples": 40,
-        "model_templates_dir": "/mnt/c/notebooks/sandbox/model/20200107",
+        "model_templates_dir": "/mnt/d/notebooks/sandbox/model/20200107",
         "model_weights_file_name": "model_weights.hdf5",
         "optimizer_weights_file_name": "optimizer_weights.pkl",
         "validation_monitor": "val_mean_squared_error"
     },
     "prepare": {
-        "cache_dir": "/mnt/c/notebooks/sandbox/cache/20200126/",
-        "data_end_dt": "2020-01-26",
-        "data_start_dt": "2018-02-25",
-        "download_end_dt": "2020-01-26",
-        "download_start_dt": "2017-12-10"
+        "cache_dir": "/mnt/d/notebooks/sandbox/cache/20200203/",
+        "data_end_dt": "2020-02-03",
+        "data_start_dt": "2018-03-07",
+        "download_end_dt": "2020-02-03",
+        "download_start_dt": "2017-12-20"
     },
     "train": {
-        "end_dt": "2020-01-26",
+        "end_dt": "2020-02-03",
         "label_max_close_weight": 1.0,
         "label_max_high_weight": 3.0,
         "lag_trading_days": [
@@ -446,7 +446,7 @@
                 ]
             }
         ],
-        "start_dt": "2019-09-01",
+        "start_dt": "2019-09-11",
         "window_trading_days": [
             3,
             5,

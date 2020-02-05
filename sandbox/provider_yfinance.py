@@ -321,6 +321,8 @@ def prepare_stocks(cfg, data_stocks, overwrite=False):
             df.break_days = df.break_days.astype(int)
             prep_stocks[k] = df
         save_pickle(pkl_file, prep_stocks)
+    else:
+        print(f"shared> prepared stock data loaded from cache: '{pkl_file}'")
     return prep_stocks
 
 def prepare_benchmarks(cfg, data_benchmarks, overwrite=False):
@@ -339,6 +341,8 @@ def prepare_benchmarks(cfg, data_benchmarks, overwrite=False):
             # df = df.loc[df.index >= cfg.train.start_dt]
             prep_benchmarks[k] = df
         save_pickle(pkl_file, prep_benchmarks)
+    else:
+        print(f"shared> prepared benchmark data loaded from cache: '{pkl_file}'")
     return prep_benchmarks
 
 def get_stocks_index(prep_stocks):
@@ -371,8 +375,9 @@ def encode_stocks(cfg, prep_stocks=None, overwrite=False):
             scaled_data = pd.DataFrame(scaler.transform(ticker_data[scale_cols]), columns=prefix(scale_cols, 'scaled'), index=ticker_data.index)
             ticker_data = pd.concat([ticker_data, categorical_data, scaled_data], axis=1).drop(columns=categorical_cols)
             enc_stocks[ticker_name] = ticker_data
-
         save_pickle(pkl_file, enc_stocks)
+    else:
+        print(f"shared> encoded stock data loaded from cache: '{pkl_file}'")
     return enc_stocks
 
 def encode_benchmarks(cfg, prep_benchmarks=None, prep_stocks=None, overwrite=False):
@@ -397,6 +402,8 @@ def encode_benchmarks(cfg, prep_benchmarks=None, prep_stocks=None, overwrite=Fal
             bm_data = pd.concat([bm_data, bm_scaled_data], axis=1)
             enc_benchmarks[bm_name] = bm_data
         save_pickle(pkl_file, enc_benchmarks)
+    else:
+        print(f"shared> encoded benchmark data loaded from cache: '{pkl_file}'")
     return enc_benchmarks
 
 def prepare_submodel_data(cfg, submodel_settings, enc_stocks=None, enc_benchmarks=None, overwrite=False):
@@ -424,6 +431,8 @@ def prepare_submodel_data(cfg, submodel_settings, enc_stocks=None, enc_benchmark
                 submodel_data = pd.concat([submodel_data, df], ignore_index=True)
         submodel_data.X = submodel_data.X.apply(lambda x: [list(x)])
         save_pickle(pkl_file, submodel_data)
+    else:
+        print(f"sm-{submodel_settings.id}> submodel data loaded from cache: '{pkl_file}'")
     return submodel_data
 
 
@@ -567,7 +576,7 @@ def generate_samples(cfg, submodel_settings, ticker_data, rel_benchmarks_data):
     samples_iter = generate_samples_iterator(cfg, submodel_settings, ticker_data)
     float_precision = submodel_settings.float_precision
     for idx, si in enumerate(samples_iter):
-        if lookback_end_date in rel_benchmarks_data:
+        if si.lookback_end_date in rel_benchmarks_data:
             bm_X = rel_benchmarks_data[si.lookback_end_date]
         else:
             # missing stock data (no matching benchmarks found)

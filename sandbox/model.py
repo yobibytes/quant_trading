@@ -128,7 +128,7 @@ def create_model(cfg, submodel_settings, mdl_data=None, ticker_name='', train_mo
     load_weights(cfg, submodel_settings, mdl, ticker_name, train_mode)
     return mdl
 
-def train_model(cfg, submodel_settings, mdl, mdl_data, ticker_name=''):
+def train_model(cfg, submodel_settings, mdl, mdl_data, ticker_name='', verbose=1):
     num_samples = mdl_data.shape[0]
     num_features = len(mdl_data.X.head(1).tolist()[0][0][0][0])
     input_length = submodel_settings.lookback_days
@@ -143,12 +143,12 @@ def train_model(cfg, submodel_settings, mdl, mdl_data, ticker_name=''):
     fit_params = {
         "batch_size": cfg.model.batch_size,
         "epochs": cfg.model.max_epochs,
-        "verbose": 1,
+        "verbose": verbose,
         "validation_split": 0.1,
         "shuffle": True,
         "callbacks": [
             EarlyStopping(verbose=True, patience=patience, monitor=monitor),
-            ModelCheckpoint(f"{pth_submodel}/best_weights_lstm-{cfg.model.lstm_hidden_size}_epoch-{{epoch:02d}}_val-{{{monitor}:.4f}}.hdf5", monitor=monitor, verbose=1, save_best_only=True)
+            ModelCheckpoint(f"{pth_submodel}/best_weights_lstm-{cfg.model.lstm_hidden_size}_epoch-{{epoch:02d}}_val-{{{monitor}:.4f}}.hdf5", monitor=monitor, verbose=verbose, save_best_only=True)
         ]
     }
     print('model> fitting ... (Hit CTRL-C to stop early)')
@@ -180,12 +180,11 @@ def train_full(cfg, start_settings_idx=0):
             print(f"sm-{submodel_settings.id}> {ticker_name}-{monitor} (+-5 around best epoch): {np.mean(history.history[monitor][(np.max(history.epoch)-patience-5):(np.max(history.epoch)-patience+5)])}")        
 
             
-def validate_model(cfg, validate_dt):
+def validate_model(cfg, validate_dt, verbose=0):
     # select model to validate against 
     mdl_cfg = cfg.copy()
     config.overwrite_end_dt(mdl_cfg, validate_dt)    
     eval_result = {}
-    verbose=0
     for submodel_settings in cfg.train.settings:
         print(f'============\n {submodel_settings.id}\n ============')
         rs = {}
@@ -297,7 +296,7 @@ def rank_model_by_weighted_score(cfg):
     df_rank = df_eval.groupby(['submodel']).agg(sum).sort_values('scores_weighted', ascending=False)[['scores_weighted']]
     return df_rank, df_eval
 
-def predict(cfg, predict_dt=None):
+def predict(cfg, predict_dt=None, verbose=0):
     if predict_dt is None:
         mdl_cfg = cfg.copy()
     else:
@@ -311,7 +310,6 @@ def predict(cfg, predict_dt=None):
     enc_benchmarks = provider.encode_benchmarks(cfg)
     data_stocks_close = provider.load_stocks_close(cfg, end_dt)
     predict_result = {}
-    verbose=0
     for submodel_settings in cfg.train.settings:
         print(f'============\n {submodel_settings.id}\n ============')
         rs = {}
@@ -345,3 +343,4 @@ def predict(cfg, predict_dt=None):
                 prediction0
             ]
         predict_result[submodel_settings.id] = rs
+    return predict_result

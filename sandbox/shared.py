@@ -303,3 +303,17 @@ def mkdirs(pth):
     if not p.is_dir():
         p.mkdir(parents=True, exist_ok=True)
     return str(p.resolve())    
+
+def get_latest_subdir(parent_dir='.'):    
+    subdirs = [os.path.join(parent_dir, d) for d in os.listdir(parent_dir) if os.path.isdir(os.path.join(parent_dir, d)) and not d.startswith('.')]
+    latest_subdir = max(subdirs, key=os.path.getmtime)
+    return latest_subdir
+
+def get_file_content(f_pth):
+    f = pathlib.Path(f_pth)
+    if f.is_file():
+        with open(f, 'r', encoding='utf-8') as fp:
+            return fp.read()
+    else:
+        print(f"shared> file doesn't exists: '{f_pth}'")
+        return None
