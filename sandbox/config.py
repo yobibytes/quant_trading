@@ -2,6 +2,8 @@ import collections
 import os
 import pathlib
 import sys
+import tensorflow as tf
+from numba import cuda
 
 import munch
 import numpy as np
@@ -12,8 +14,6 @@ from provider_yfinance import *
 from dotenv import load_dotenv, find_dotenv
 
 def print_env():
-    import tensorflow as tf
-    from numba import cuda
     # tf.config.set_soft_device_placement(True)
     tf.debugging.set_log_device_placement(True)
 
@@ -25,7 +25,6 @@ def print_env():
     print(f"Is the Tensor on GPU #0: {gpu_test.device.endswith('GPU:0')}")
     print(f"Device name: {gpu_test.device}")
     print(f"Eager Execution enabled: {tf.executing_eagerly()}")
-
 
     
 def save_config_json(cfg, cfg_path='./config.json'):
@@ -46,37 +45,14 @@ def load_config_yaml(cfg_path='./config.yaml'):
 
 def load_config(cfg_path='./config.json'):
     load_dotenv(find_dotenv(), verbose=True)
-    np.random.seed(int(os.environ['RANDOM_SEED']))
-    f_cfg = pathlib.Path(cfg_path)
-    if f_cfg.is_file():
-        with open(f_cfg, 'r', encoding='utf-8') as fd:
-            if f_cfg.suffix == '.json':
-                cfg = munch.Munch.fromJSON(fd.read())
-            else:
-                cfg = munch.Munch.fromYAML(fd.read())
-            return cfg
-    else:
-        return None
+    seed = os.environ['RANDOM_SEED']
+    np.random.seed(int(seed))
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    tf.random.set_seed(int(seed))
+    return load_munch(cfg_path)
 
 def save_config(cfg, cfg_path='./config.json'):
-    f_cfg = pathlib.Path(cfg_path)
-    if f_cfg.suffix == '.json':
-        cfg_serialized = cfg.toJSON(indent=4, sort_keys=True)
-    else:
-        cfg_serialized = cfg.toYAML(allow_unicode=True, default_flow_style=False)
-    with open(f_cfg, 'w', encoding='utf-8') as fd:
-        fd.write(cfg_serialized)
-    print(f"config> saved config to '{f_cfg.resolve()}'")
-
-def save_config(cfg, cfg_path='./config.json'):
-    f_cfg = pathlib.Path(cfg_path)
-    if f_cfg.suffix == '.json':
-        cfg_serialized = cfg.toJSON(indent=4, sort_keys=True)
-    else:
-        cfg_serialized = cfg.toYAML(allow_unicode=True, default_flow_style=False)
-    with open(f_cfg, 'w', encoding='utf-8') as fd:
-        fd.write(cfg_serialized)
-    print(f"config> saved config to '{f_cfg.resolve()}'")
+    save_munch(cfg, cfg_path)
     
 def get_config(selected_index='^GDAXI', overwrite=False, cfg_path=None):
     if cfg_path is None:

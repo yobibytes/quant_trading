@@ -309,7 +309,7 @@ def predict(cfg, predict_dt=None, verbose=0):
     enc_stocks = provider.encode_stocks(cfg)
     enc_benchmarks = provider.encode_benchmarks(cfg)
     data_stocks_close = provider.load_stocks_close(cfg, end_dt)
-    predict_result = {}
+    predict_result = munch.Munch()
     for submodel_settings in cfg.train.settings:
         print(f'============\n {submodel_settings.id}\n ============')
         rs = {}
@@ -342,5 +342,5 @@ def predict(cfg, predict_dt=None, verbose=0):
                 close0, 
                 prediction0
             ]
-        predict_result[submodel_settings.id] = rs
+        predict_result[submodel_settings.id] = rs    
     return predict_result

@@ -13,6 +13,9 @@ import pandas as pd
 from numba import jit
 import urllib.parse
 from qgrid import show_grid
+import stat
+import shutil
+import os
 
 STRIP_CHARS = "()[]{}.+*~_-? \t\n\r\x0b\x0c"
 SECONDS_IN_MS = 1000
@@ -136,7 +139,10 @@ def parse_datetime(dt_str):
     elif l > 9:
         return datetime.datetime.strptime(dt_str, '%Y-%m-%d')
     elif l > 7 :
-        return datetime.datetime.strptime(dt_str, '%d-%m-%y')
+        if dt_str[3] == '.':
+            return datetime.datetime.strptime(dt_str, '%d.%m.%y')
+        else:
+            return datetime.datetime.strptime(dt_str, '%d-%m-%y')
     elif l > 5:
         return datetime.datetime.strptime(dt_str, '%Y-%m')
     else:
@@ -222,7 +228,7 @@ def is_file(f):
 
 
 def list_directory(pth, search_pattern='*', filter_func=is_file):
-    p = pathlib.Path(pth).glob('*')
+    p = pathlib.Path(pth).glob(search_pattern)
     return [f for f in p if filter_func(f)]
 
 
@@ -302,7 +308,7 @@ def mkdirs(pth):
         p = pathlib.Path(pth)
     if not p.is_dir():
         p.mkdir(parents=True, exist_ok=True)
-    return str(p.resolve())    
+    return str(p.resolve())
 
 def get_latest_subdir(parent_dir='.'):    
     subdirs = [os.path.join(parent_dir, d) for d in os.listdir(parent_dir) if os.path.isdir(os.path.join(parent_dir, d)) and not d.startswith('.')]
@@ -316,4 +322,42 @@ def get_file_content(f_pth):
             return fp.read()
     else:
         print(f"shared> file doesn't exists: '{f_pth}'")
+        return None
+
+def chmod(f_pth, set_flags=None, add_flags=None):
+    st = os.stat(f_pth)
+    mode = st.st_mode
+    if set_flags is not None:
+        mode = set_flags
+    if add_flags is not None:
+        mode = mode | add_flags
+    os.chmod(f_pth, mode)
+
+
+def copytree(from_path, to_path, overwrite=True):
+    if overwrite and os.path.exists(to_path):
+        shutil.rmtree(to_path)
+    shutil.copytree(from_path, to_path)
+
+
+def save_munch(munch_obj, save_path):
+    pth = pathlib.Path(save_path)
+    if pth.suffix == '.json':
+        serialized = munch_obj.toJSON(indent=4, sort_keys=True)
+    else:
+        serialized = munch_obj.toYAML(allow_unicode=True, default_flow_style=False)
+    with open(pth, 'w', encoding='utf-8') as fd:
+        fd.write(serialized)
+    print(f"shared> saved munch object to '{pth.resolve()}'")
+
+def load_munch(load_path):
+    pth = pathlib.Path(load_path)
+    if pth.is_file():
+        with open(pth, 'r', encoding='utf-8') as fd:
+            if pth.suffix == '.json':
+                munch_obj = munch.Munch.fromJSON(fd.read())
+            else:
+                munch_obj = munch.Munch.fromYAML(fd.read())
+            return munch_obj
+    else:
         return None
